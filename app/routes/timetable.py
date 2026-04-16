@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
 from typing import List
 import uuid
 import os
@@ -13,6 +13,7 @@ from app.services.supabase_client import (
 )
 from app.services.ocr import OCRService
 from app.services.google_calendar import create_all_calendar_links
+from app.utils.dependencies import get_current_user
 
 router = APIRouter()
 
@@ -21,19 +22,16 @@ ocr_service = OCRService()
 
 
 @router.post("/upload", response_model=UploadResponse)
-def upload_timetable(payload: UploadRequest):
-    """Parse raw OCR data, store both raw and parsed timetable in Supabase."""
+def upload_timetable(payload: UploadRequest, user_id: str = Depends(get_current_user)):
     parsed = parse_timetable(payload.raw_data)
-
     if not parsed:
         raise HTTPException(status_code=400, detail="No valid timetable data found in input.")
-
-    timetable_id = insert_timetable(
-        user_id=payload.user_id,
+    result = insert_timetable(
+        user_id=user_id,
         raw_data=payload.raw_data,
         parsed_data=parsed,
     )
-    return UploadResponse(message="Timetable stored", timetable_id=timetable_id)
+    return UploadResponse(message="Timetable stored", timetable_id=result["timetable_id"], user_id=result["user_id"])
 
 
 @router.get("/timetable/{timetable_id}")
@@ -46,12 +44,10 @@ def fetch_timetable(timetable_id: str):
 
 
 @router.post("/reminder", response_model=ReminderResponse)
-def create_reminder(payload: ReminderRequest):
-    """Store a reminder for a specific timetable entry."""
+def create_reminder(payload: ReminderRequest, user_id: str = Depends(get_current_user)):
     record = get_timetable(payload.timetable_id)
     if not record:
         raise HTTPException(status_code=404, detail="Timetable not found.")
-
     reminder_id = insert_reminder(
         timetable_id=payload.timetable_id,
         day=payload.day,
@@ -79,9 +75,9 @@ def create_google_calendar_reminder(payload: GoogleCalendarReminderRequest):
 
 @router.post("/upload-image")
 async def upload_timetable_image(
-    user_id: str = Form(...),
     course_image: UploadFile = File(...),
-    schedule_image: UploadFile = File(...)
+    schedule_image: UploadFile = File(...),
+    user_id: str = Depends(get_current_user)
 ):
     """
     Upload timetable images, extract data using OCR, and store in database
@@ -133,10 +129,10 @@ async def upload_timetable_image(
             "timetable_id": timetable_id
         }
         
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to process timetable images. Please ensure the images are clear and try again.")
     
     finally:
         # Clean up temp files
