@@ -1,116 +1,355 @@
 # Timetable Extraction System — Backend API
 
-A FastAPI backend that accepts OCR-like timetable data, parses it into structured JSON, stores it in Supabase, and provides reminder functionality.
+## Setup & Run
 
----
-
-## Tech Stack
-
-- **FastAPI** — API framework
-- **Supabase** — PostgreSQL database
-- **APScheduler** — background reminder scheduler
-- **Pydantic** — request/response validation
-- **Python 3.11+**
-
----
-
-## Project Structure
-
-```
-SDP Project/
-├── app/
-│   ├── main.py
-│   ├── routes/
-│   │   └── timetable.py
-│   ├── services/
-│   │   ├── parser.py
-│   │   ├── supabase_client.py
-│   │   └── reminder.py
-│   └── models/
-│       └── schemas.py
-├── schema.sql
-├── requirements.txt
-└── .env.local
-```
-
----
-
-## Setup
-
-**1. Install dependencies**
 ```bash
 pip install -r requirements.txt
-```
-
-**2. Configure environment — `.env.local`**
-```
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your-anon-public-key
-```
-
-**3. Create database tables**
-
-Run `schema.sql` in your Supabase SQL Editor.
-
-**4. Start the server**
-```bash
 uvicorn app.main:app --reload
 ```
 
-**5. Open interactive API docs**
-```
-http://127.0.0.1:8000/docs
+Docs: `http://127.0.0.1:8000/docs`
+
+---
+
+## Supabase SQL
+
+Run in Supabase SQL Editor before starting:
+
+```sql
+CREATE TABLE users (
+  id                  TEXT PRIMARY KEY,
+  email               TEXT UNIQUE,
+  phone               TEXT UNIQUE,
+  password            TEXT NOT NULL,
+  is_verified         BOOLEAN DEFAULT TRUE,
+  full_name           TEXT,
+  registration_number TEXT UNIQUE,
+  department          TEXT,
+  degree              TEXT,
+  sem                 TEXT,
+  created_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE timetables (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT REFERENCES users(id),
+  data       JSONB,
+  raw_data   JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE reminders (
+  id           TEXT PRIMARY KEY,
+  timetable_id TEXT REFERENCES timetables(id),
+  day          TEXT,
+  time         TEXT,
+  subject      TEXT,
+  faculty      TEXT,
+  created_at   TIMESTAMPTZ DEFAULT NOW()
+);
 ```
 
 ---
 
-## Raw Data Format (Input Convention)
+## Auth Test Order
 
-Each row in `raw_data` follows this column layout:
-
-| Index | 0   | 1    | 2        | 3        | 4        | 5        | ... |
-|-------|-----|------|----------|----------|----------|----------|-----|
-| Value | Day | Type | Subject1 | Faculty1 | Subject2 | Faculty2 | ... |
-
-- **Day** — full weekday name e.g. `"Monday"`, `"Tuesday"`
-- **Type** — `"THEORY"` or `"LAB"`
-- **Subject + Faculty** — separate paired columns from index 2 onward
-- Use `"-"` or `"--"` to mark empty slots
-
-Each subject+faculty pair maps to a time slot in order:
 ```
-Pair (col2, col3)  →  08:00-08:50
-Pair (col4, col5)  →  09:00-09:50
-Pair (col6, col7)  →  10:00-10:50
-... and so on up to 19:00-19:50
+Step 1 → POST /auth/signup/initiate/email   OR   POST /auth/signup/initiate/phone
+Step 2 → POST /auth/signup/verify
+Step 3 → POST /auth/signup/set-password
+Step 4 → POST /auth/login
+Step 5 → POST /auth/profile/setup
+Step 6 → GET  /auth/profile
+Step 7 → POST /auth/refresh  (optional)
 ```
 
 ---
 
-## API Endpoints
+## Forgot Password Flow
 
-> Base URL: `http://127.0.0.1:8000`
-> Header for all POST requests: `Content-Type: application/json`
+```
+Step 1 → POST /auth/forgot-password/initiate
+Step 2 → POST /auth/forgot-password/verify
+Step 3 → POST /auth/forgot-password/reset
+```
 
 ---
 
-### 1. POST `/upload`
+## POST `/auth/signup/initiate/email`
 
-Upload raw OCR timetable data. Parses it into structured JSON and stores both raw and parsed data in Supabase.
-
-**Postman Setup**
 ```
-Method  : POST
-URL     : http://127.0.0.1:8000/upload
-Headers : Content-Type: application/json
-Body    : raw → JSON
+POST http://127.0.0.1:8000/auth/signup/initiate/email
+Content-Type: application/json
 ```
 
-**Request Body**
+**Body**
+```json
+{ "email": "snigdha.22bce8076@vitapstudent.ac.in" }
+```
 
+**Response 200**
+```json
+{ "message": "OTP sent" }
+```
+
+---
+
+## POST `/auth/signup/initiate/phone`
+
+```
+POST http://127.0.0.1:8000/auth/signup/initiate/phone
+Content-Type: application/json
+```
+
+**Body**
+```json
+{ "phone": "9876543210" }
+```
+
+**Response 200**
+```json
+{ "message": "OTP sent" }
+```
+
+---
+
+## POST `/auth/signup/verify`
+
+```
+POST http://127.0.0.1:8000/auth/signup/verify
+Content-Type: application/json
+```
+
+**Body**
 ```json
 {
-  "user_id": "student_001",
+  "email_or_phone": "snigdha.22bce8076@vitapstudent.ac.in",
+  "otp": "482910"
+}
+```
+
+**Response 200**
+```json
+{ "message": "OTP verified" }
+```
+
+---
+
+## POST `/auth/signup/set-password`
+
+```
+POST http://127.0.0.1:8000/auth/signup/set-password
+Content-Type: application/json
+```
+
+**Body**
+```json
+{
+  "email_or_phone": "snigdha.22bce8076@vitapstudent.ac.in",
+  "password": "mypassword"
+}
+```
+
+**Response 200**
+```json
+{ "message": "Account created successfully" }
+```
+
+---
+
+## POST `/auth/login`
+
+```
+POST http://127.0.0.1:8000/auth/login
+Content-Type: application/json
+```
+
+**Body**
+```json
+{
+  "email_or_phone": "snigdha.22bce8076@vitapstudent.ac.in",
+  "password": "mypassword"
+}
+```
+
+**Response 200**
+```json
+{
+  "message": "Login successful",
+  "token": "<access_token>",
+  "refresh_token": "<refresh_token>",
+  "user": {
+    "id": "uuid",
+    "email": "snigdha.22bce8076@vitapstudent.ac.in",
+    "phone": null
+  }
+}
+```
+
+---
+
+## POST `/auth/refresh`
+
+```
+POST http://127.0.0.1:8000/auth/refresh
+Content-Type: application/json
+```
+
+**Body**
+```json
+{ "refresh_token": "<refresh_token>" }
+```
+
+**Response 200**
+```json
+{ "token": "<new_access_token>" }
+```
+
+---
+
+## POST `/auth/profile/setup`
+
+```
+POST http://127.0.0.1:8000/auth/profile/setup
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+**Body**
+```json
+{
+  "full_name": "Snigdha",
+  "registration_number": "22BCE8076",
+  "phone": "7070970266",
+  "department": "Scope",
+  "degree": "btech",
+  "sem": "Fall Sem 2026-2027"
+}
+```
+
+**Response 200**
+```json
+{
+  "message": "Profile updated successfully",
+  "profile": {
+    "id": "UI-A1B2C3",
+    "email": "snigdha.22bce8076@vitapstudent.ac.in",
+    "phone": "7070970266",
+    "full_name": "Snigdha",
+    "registration_number": "22BCE8076",
+    "department": "Scope",
+    "degree": "btech",
+    "sem": "Fall Sem 2026-2027"
+  }
+}
+```
+
+---
+
+## GET `/auth/profile`
+
+```
+GET http://127.0.0.1:8000/auth/profile
+Authorization: Bearer <token>
+```
+
+**Response 200**
+```json
+{
+  "id": "UI-A1B2C3",
+  "email": "snigdha.22bce8076@vitapstudent.ac.in",
+  "phone": "7070970266",
+  "full_name": "Snigdha",
+  "registration_number": "22BCE8076",
+  "department": "Scope",
+  "degree": "btech",
+  "sem": "Fall Sem 2026-2027"
+}
+```
+
+---
+
+## POST `/auth/forgot-password/initiate`
+
+```
+POST http://127.0.0.1:8000/auth/forgot-password/initiate
+Content-Type: application/json
+```
+
+**Body**
+```json
+{ "email_or_phone": "snigdha.22bce8076@vitapstudent.ac.in" }
+```
+
+**Response 200**
+```json
+{ "message": "OTP sent" }
+```
+
+---
+
+## POST `/auth/forgot-password/verify`
+
+```
+POST http://127.0.0.1:8000/auth/forgot-password/verify
+Content-Type: application/json
+```
+
+**Body**
+```json
+{ "email_or_phone": "snigdha.22bce8076@vitapstudent.ac.in", "otp": "482910" }
+```
+
+**Response 200**
+```json
+{ "message": "OTP verified" }
+```
+
+---
+
+## POST `/auth/forgot-password/reset`
+
+```
+POST http://127.0.0.1:8000/auth/forgot-password/reset
+Content-Type: application/json
+```
+
+**Body**
+```json
+{ "email_or_phone": "snigdha.22bce8076@vitapstudent.ac.in", "password": "NewPass@123" }
+```
+
+**Response 200**
+```json
+{ "message": "Password reset successfully" }
+```
+
+---
+
+## Timetable Test Order
+
+```
+Step 1 → POST /auth/login    → copy token from response
+Step 2 → POST /upload        → paste token in Authorization header, copy timetable_id
+Step 3 → GET  /timetable/id  → paste timetable_id in URL
+Step 4 → POST /reminder      → paste token in Authorization header, paste timetable_id in body
+```
+
+> All timetable and reminder endpoints require `Authorization: Bearer <token>` header.
+
+---
+
+## POST `/upload`
+
+```
+POST http://127.0.0.1:8000/upload
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+**Body**
+```json
+{
   "raw_data": [
     ["Monday", "THEORY", "DBMS",   "Dr. Shah",  "OS",   "Dr. Rao",  "-", "-", "CN",   "Dr. Mehta"],
     ["Monday", "LAB",    "DBMS-L", "Dr. Shah",  "-",    "-",        "-", "-", "OS-L", "Dr. Rao"  ],
@@ -119,160 +358,55 @@ Body    : raw → JSON
 }
 ```
 
-| Field      | Type            | Required | Description                                         |
-|------------|-----------------|----------|-----------------------------------------------------|
-| `user_id`  | string          | ✅       | Unique identifier for the student                   |
-| `raw_data` | array of arrays | ✅       | OCR rows — each row is `[Day, Type, Subject, Faculty, ...]` |
-
-**Response — 200 OK**
-
+**Response 200**
 ```json
 {
   "message": "Timetable stored",
-  "timetable_id": "b3f1c2d4-e5a6-7890-bcde-f01234567890"
-}
-```
-
-| Field          | Type   | Description                              |
-|----------------|--------|------------------------------------------|
-| `message`      | string | Confirmation message                     |
-| `timetable_id` | string | UUID of the stored timetable — save this |
-
-**Response — 400 Bad Request**
-
-```json
-{
-  "detail": "No valid timetable data found in input."
-}
-```
-
-**Response — 422 Unprocessable Entity** *(missing or wrong field types)*
-
-```json
-{
-  "detail": [
-    {
-      "type": "missing",
-      "loc": ["body", "user_id"],
-      "msg": "Field required"
-    }
-  ]
+  "timetable_id": "TT-A1B2C3",
+  "user_id": "UI-A1B2C3"
 }
 ```
 
 ---
 
-### 2. GET `/timetable/{timetable_id}`
+## GET `/timetable/{timetable_id}`
 
-Fetch a stored timetable by its ID. Returns the structured parsed JSON.
-
-**Postman Setup**
 ```
-Method  : GET
-URL     : http://127.0.0.1:8000/timetable/b3f1c2d4-e5a6-7890-bcde-f01234567890
-Headers : (none required)
-Body    : (none)
+GET http://127.0.0.1:8000/timetable/TT-A1B2C3
 ```
 
-**URL Parameter**
-
-| Parameter      | Type   | Required | Description                                    |
-|----------------|--------|----------|------------------------------------------------|
-| `timetable_id` | string | ✅       | UUID returned from POST /upload                |
-
-**Response — 200 OK**
-
+**Response 200**
 ```json
 {
   "Monday": [
-    {
-      "type": "THEORY",
-      "time": "08:00-08:50",
-      "subject": "DBMS",
-      "faculty": "Dr. Shah"
-    },
-    {
-      "type": "THEORY",
-      "time": "09:00-09:50",
-      "subject": "OS",
-      "faculty": "Dr. Rao"
-    },
-    {
-      "type": "THEORY",
-      "time": "11:00-11:50",
-      "subject": "CN",
-      "faculty": "Dr. Mehta"
-    },
-    {
-      "type": "LAB",
-      "time": "08:00-08:50",
-      "subject": "DBMS-L",
-      "faculty": "Dr. Shah"
-    },
-    {
-      "type": "LAB",
-      "time": "11:00-11:50",
-      "subject": "OS-L",
-      "faculty": "Dr. Rao"
-    }
+    { "type": "THEORY", "time": "08:00-08:50", "subject": "DBMS",   "faculty": "Dr. Shah"  },
+    { "type": "THEORY", "time": "09:00-09:50", "subject": "OS",     "faculty": "Dr. Rao"   },
+    { "type": "THEORY", "time": "11:00-11:50", "subject": "CN",     "faculty": "Dr. Mehta" },
+    { "type": "LAB",    "time": "08:00-08:50", "subject": "DBMS-L", "faculty": "Dr. Shah"  },
+    { "type": "LAB",    "time": "11:00-11:50", "subject": "OS-L",   "faculty": "Dr. Rao"   }
   ],
   "Tuesday": [
-    {
-      "type": "THEORY",
-      "time": "08:00-08:50",
-      "subject": "TEE1",
-      "faculty": "Dr. Kumar"
-    },
-    {
-      "type": "THEORY",
-      "time": "09:00-09:50",
-      "subject": "TEE2",
-      "faculty": "Dr. Nair"
-    },
-    {
-      "type": "THEORY",
-      "time": "11:00-11:50",
-      "subject": "FLAT",
-      "faculty": "Dr. Joshi"
-    }
+    { "type": "THEORY", "time": "08:00-08:50", "subject": "TEE1", "faculty": "Dr. Kumar" },
+    { "type": "THEORY", "time": "09:00-09:50", "subject": "TEE2", "faculty": "Dr. Nair"  },
+    { "type": "THEORY", "time": "11:00-11:50", "subject": "FLAT", "faculty": "Dr. Joshi" }
   ]
-}
-```
-
-| Field     | Type   | Description                     |
-|-----------|--------|---------------------------------|
-| `type`    | string | `"THEORY"` or `"LAB"`          |
-| `time`    | string | Time slot e.g. `"08:00-08:50"` |
-| `subject` | string | Subject code e.g. `"DBMS"`     |
-| `faculty` | string | Faculty name e.g. `"Dr. Shah"` |
-
-**Response — 404 Not Found**
-
-```json
-{
-  "detail": "Timetable not found."
 }
 ```
 
 ---
 
-### 3. POST `/reminder`
+## POST `/reminder`
 
-Create a reminder for a specific class. The scheduler checks every minute and prints an alert when the day and time match.
-
-**Postman Setup**
 ```
-Method  : POST
-URL     : http://127.0.0.1:8000/reminder
-Headers : Content-Type: application/json
-Body    : raw → JSON
+POST http://127.0.0.1:8000/reminder
+Authorization: Bearer <token>
+Content-Type: application/json
 ```
 
-**Request Body**
-
+**Body**
 ```json
 {
-  "timetable_id": "b3f1c2d4-e5a6-7890-bcde-f01234567890",
+  "timetable_id": "TT-A1B2C3",
   "day": "Monday",
   "time": "09:00",
   "subject": "DBMS",
@@ -280,116 +414,10 @@ Body    : raw → JSON
 }
 ```
 
-| Field          | Type   | Required | Description                                    |
-|----------------|--------|----------|------------------------------------------------|
-| `timetable_id` | string | ✅       | UUID from POST /upload                         |
-| `day`          | string | ✅       | Full weekday name e.g. `"Monday"`              |
-| `time`         | string | ✅       | Time in `HH:MM` format e.g. `"09:00"`         |
-| `subject`      | string | ✅       | Subject name e.g. `"DBMS"`                    |
-| `faculty`      | string | ❌       | Faculty name (optional) — defaults to `""`    |
-
-**Response — 200 OK**
-
+**Response 200**
 ```json
 {
   "message": "Reminder created",
-  "reminder_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  "reminder_id": "RM-A1B2C3"
 }
 ```
-
-| Field         | Type   | Description                  |
-|---------------|--------|------------------------------|
-| `message`     | string | Confirmation message         |
-| `reminder_id` | string | UUID of the created reminder |
-
-**Response — 404 Not Found** *(timetable_id does not exist)*
-
-```json
-{
-  "detail": "Timetable not found."
-}
-```
-
-**Response — 422 Unprocessable Entity** *(missing required fields)*
-
-```json
-{
-  "detail": [
-    {
-      "type": "missing",
-      "loc": ["body", "day"],
-      "msg": "Field required"
-    }
-  ]
-}
-```
-
----
-
-## Postman Test Order
-
-```
-Step 1 → POST /upload        → copy timetable_id from response
-Step 2 → GET  /timetable/id  → paste timetable_id in URL, verify parsed data
-Step 3 → POST /reminder      → paste timetable_id in body, create reminder
-```
-
----
-
-## Reminder Scheduler
-
-APScheduler runs a background job **every minute**. When the current day and time match a stored reminder, it prints to the console:
-
-```
-Reminder: DBMS (Dr. Shah) at 09:00
-Reminder: OS at 10:00
-```
-
-- Starts automatically when the server starts
-- Stops cleanly when the server shuts down
-
----
-
-## Database Schema
-
-### timetables
-
-| Column       | Type        | Description                 |
-|--------------|-------------|-----------------------------|
-| `id`         | uuid (PK)   | Auto-generated UUID         |
-| `user_id`    | text        | Student/user identifier     |
-| `data`       | jsonb       | Parsed structured timetable |
-| `raw_data`   | jsonb       | Original OCR input rows     |
-| `created_at` | timestamptz | Auto-set on insert          |
-
-### reminders
-
-| Column         | Type        | Description                         |
-|----------------|-------------|-------------------------------------|
-| `id`           | uuid (PK)   | Auto-generated UUID                 |
-| `timetable_id` | uuid (FK)   | References `timetables(id)`         |
-| `day`          | text        | Weekday name                        |
-| `time`         | text        | Time in `HH:MM` format             |
-| `subject`      | text        | Subject name                        |
-| `faculty`      | text        | Faculty name (default empty string) |
-| `created_at`   | timestamptz | Auto-set on insert                  |
-
----
-
-## Time Slots Reference
-
-| Slot | Time        | Slot | Time        |
-|------|-------------|------|-------------|
-| 0    | 08:00-08:50 | 6    | 14:00-14:50 |
-| 1    | 09:00-09:50 | 7    | 15:00-15:50 |
-| 2    | 10:00-10:50 | 8    | 16:00-16:50 |
-| 3    | 11:00-11:50 | 9    | 17:00-17:50 |
-| 4    | 12:00-12:50 | 10   | 18:00-18:50 |
-| 5    | 13:00-13:50 | 11   | 19:00-19:50 |
-
----
-
-## Ignored Values
-
-The parser skips these and does not create entries for them:
-

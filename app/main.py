@@ -1,7 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.routes import timetable
+from app.routes import auth
 from app.services.reminder import start_scheduler, stop_scheduler
 
 
@@ -31,8 +34,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = exc.errors()
+    messages = []
+    for e in errors:
+        field = e["loc"][-1] if e.get("loc") else "input"
+        msg = e["msg"].replace("Value error, ", "")
+        messages.append(f"{field}: {msg}")
+    return JSONResponse(
+        status_code=422,
+        content={"error": " | ".join(messages)},
+    )
+
 # Include routers
 app.include_router(timetable.router)
+app.include_router(auth.router)
 
 
 @app.get("/")
