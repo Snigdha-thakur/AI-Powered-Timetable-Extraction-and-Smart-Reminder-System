@@ -168,7 +168,7 @@ Content-Type: application/json
 ```json
 {
   "email_or_phone": "snigdha.22bce8076@vitapstudent.ac.in",
-  "password": "mypassword"
+  "password": "NewPass@123"
 }
 ```
 
