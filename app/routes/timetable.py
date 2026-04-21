@@ -105,34 +105,36 @@ async def upload_timetable_image(
         
         # Process with OCR
         raw_data = ocr_service.process_timetable(course_path, schedule_path)
-        
+
         if not raw_data:
             raise HTTPException(status_code=400, detail="No valid timetable data found")
-        
-        # Parse raw_data to structured format
-        parsed_data = parse_raw_data_to_structured(raw_data)
-        
+
+        # Use the same parser as /upload endpoint
+        parsed_data = parse_timetable(raw_data)
+
         # Store in Supabase
         result = _supabase.table("timetables").insert({
             "user_id": user_id,
             "raw_data": raw_data,
             "data": parsed_data
         }).execute()
-        
+
         if not result.data:
             raise HTTPException(status_code=500, detail="Failed to store timetable")
-        
+
         timetable_id = result.data[0]["id"]
-        
+
         return {
             "message": "Timetable stored",
             "timetable_id": timetable_id
         }
-        
+
     except HTTPException:
         raise
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to process timetable images. Please ensure the images are clear and try again.")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
     
     finally:
         # Clean up temp files
@@ -148,42 +150,3 @@ async def upload_timetable_image(
                 pass
 
 
-def parse_raw_data_to_structured(raw_data: List[List[str]]) -> dict:
-    """
-    Convert raw_data to structured timetable format
-    """
-    time_slots = [
-        "08:00-08:50", "09:00-09:50", "10:00-10:50", "11:00-11:50",
-        "12:00-12:50", "13:00-13:50", "14:00-14:50", "15:00-15:50",
-        "16:00-16:50", "17:00-17:50", "18:00-18:50", "19:00-19:50"
-    ]
-    
-    timetable = {}
-    
-    for row in raw_data:
-        if len(row) < 2:
-            continue
-            
-        day = row[0]
-        entry_type = row[1]
-        
-        if day not in timetable:
-            timetable[day] = []
-        
-        # Process each time slot
-        slot_index = 0
-        for i in range(2, len(row), 2):
-            subject = row[i] if i < len(row) else "-"
-            faculty = row[i+1] if i+1 < len(row) else ""
-            
-            if subject and subject != "-" and subject != "--":
-                timetable[day].append({
-                    "type": entry_type,
-                    "time": time_slots[slot_index] if slot_index < len(time_slots) else "",
-                    "subject": subject,
-                    "faculty": faculty if faculty else ""
-                })
-            
-            slot_index += 1
-    
-    return timetable
