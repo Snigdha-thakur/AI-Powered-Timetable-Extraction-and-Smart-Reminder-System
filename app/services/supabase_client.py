@@ -1,11 +1,12 @@
 import os
 import random
 import string
+from pathlib import Path
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
-# Explicitly load .env.local (dotenv defaults to .env)
-load_dotenv(dotenv_path=".env.local")
+# Use absolute path so it works regardless of where uvicorn is launched from
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env.local")
 
 _supabase: Client = create_client(
     os.environ["SUPABASE_URL"],
