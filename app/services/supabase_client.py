@@ -38,7 +38,7 @@ def get_timetable(timetable_id: str) -> dict | None:
     return result.data if result else None
 
 
-def insert_reminder(timetable_id: str, day: str, time: str, subject: str, faculty: str = "") -> str:
+def insert_reminder(timetable_id: str, day: str, time: str, subject: str, faculty: str = "", venue: str = "") -> str:
     reminder_id = "RM-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
     _supabase.table("reminders").insert({
         "id": reminder_id,
@@ -47,6 +47,7 @@ def insert_reminder(timetable_id: str, day: str, time: str, subject: str, facult
         "time": time,
         "subject": subject,
         "faculty": faculty,
+        "venue": venue,
     }).execute()
     return reminder_id
 

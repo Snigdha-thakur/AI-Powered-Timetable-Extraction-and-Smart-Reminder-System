@@ -13,5 +13,6 @@ create table if not exists reminders (
     time          text not null,
     subject       text not null,
     faculty       text not null default '',
+    venue         text not null default '',
     created_at    timestamptz default now()
 );

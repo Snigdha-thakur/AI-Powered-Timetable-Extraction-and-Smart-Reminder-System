@@ -9,7 +9,6 @@ from app.services.supabase_client import (
     insert_timetable,
     get_timetable,
     insert_reminder,
-    _supabase
 )
 from app.services.ocr import OCRService
 from app.services.google_calendar import create_all_calendar_links
@@ -54,6 +53,7 @@ def create_reminder(payload: ReminderRequest, user_id: str = Depends(get_current
         time=payload.time,
         subject=payload.subject,
         faculty=payload.faculty,
+        venue=payload.venue,
     )
     return ReminderResponse(message="Reminder created", reminder_id=reminder_id)
 
@@ -113,16 +113,8 @@ async def upload_timetable_image(
         parsed_data = parse_timetable(raw_data)
 
         # Store in Supabase
-        result = _supabase.table("timetables").insert({
-            "user_id": user_id,
-            "raw_data": raw_data,
-            "data": parsed_data
-        }).execute()
-
-        if not result.data:
-            raise HTTPException(status_code=500, detail="Failed to store timetable")
-
-        timetable_id = result.data[0]["id"]
+        result = insert_timetable(user_id=user_id, raw_data=raw_data, parsed_data=parsed_data)
+        timetable_id = result["timetable_id"]
 
         return {
             "message": "Timetable stored",
