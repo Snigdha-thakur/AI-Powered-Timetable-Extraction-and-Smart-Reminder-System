@@ -53,6 +53,10 @@ TYPE_RE = re.compile(
     re.IGNORECASE
 )
 
+# Catches ONLY the stray leading character left when OCR reads "( Embedded Theory )"
+# as a separate token — results in course name starting with "p " or "( "
+STRAY_BRACKET_RE = re.compile(r'^[\(\[p]\s+', re.IGNORECASE)
+
 SLOT_RE = re.compile(r'\b([A-Z]{1,2}\d{1,2}[A-Z]?)\b')
 
 VENUE_RE = re.compile(
@@ -70,6 +74,8 @@ VENUE_RE = re.compile(
 VALID_SLOT_PREFIXES = {
     'A','B','C','D','E','F','G','L',
     'TA','TB','TC','TD','TE','TF','TG','T',
+    'SA','SB','SC','SD','SE','SF','SG',
+    'STA','STB','STC','STD',
 }
 
 NEVER_FACULTY = {
@@ -77,10 +83,16 @@ NEVER_FACULTY = {
     'SEMESTER','REGULAR','PROJECT','CATEGORY','OPTION',
     'CLASS','FACULTY','DETAILS','UPDATED','DATE','TYPE',
     'STATUS','REF','NOTE','NOTES','GENERAL','VTOP','VIT',
-    # Add header cell fragments explicitly
     'VENUE','SLOT','COURSE','GROUP','CATEGORY','OPTION',
     'ATTENDANCE','REGISTERED','UPDATED','TIME',
+    'SSL','SCOPE','PROJECT',
 }
+
+# Reject faculty strings that look like auto-generated VTOP placeholders
+FAKE_FACULTY_RE = re.compile(
+    r'(Faculty-\d|Dig\s+Crs|SCOPE\s+Dig|Prof\.SCOPE|SSL|Project\s*-)',
+    re.IGNORECASE
+)
 
 BUILDING_CODE_RE = re.compile(r'^[A-Z]{2,6}$')
 
@@ -115,7 +127,13 @@ def clean(text):
     return re.sub(r'\s+', ' ', text).strip()
 
 def fix_ocr_digits(text):
-    return re.sub(r'\b([A-Z]{1,2}\d)[O]\b', lambda m: m.group(1) + '0', text)
+    # Fix O→0 in slot codes like "L1O" → "L10"
+    text = re.sub(r'\b([A-Z]{1,2}\d)[O]\b', lambda m: m.group(1) + '0', text)
+    # Fix S→5 and I→1 in course codes like "ST52007" → "STS2007", "CS11005" → "CSI1005"
+    # Pattern: letter prefix followed by digit that looks like a letter substitution
+    text = re.sub(r'\b([A-Z]{2,3})5([A-Z]{0,1}\d{3,4})\b',
+                  lambda m: m.group(1) + 'S' + m.group(2), text)
+    return text
 
 def is_valid_slot(s):
     s = fix_ocr_digits(s).rstrip('- ').strip()
@@ -124,14 +142,14 @@ def is_valid_slot(s):
         return False
     prefix = m.group(1)
     num    = int(m.group(2))
-    # Reject multi-letter T-prefixes like TFF, TBB, TCC (timetable grid codes)
-    if len(prefix) == 3:
-        return False
+    # 3-letter prefixes only valid if explicitly in VALID_SLOT_PREFIXES (STA, STB, STC, STD)
     return prefix in VALID_SLOT_PREFIXES and 1 <= num <= 60
 
 def extract_venue(text):
     m = VENUE_RE.search(text)
-    return m.group(1).upper() if m else ""
+    if not m:
+        return ""
+    return re.sub(r'-ALL$', '', m.group(1).upper(), flags=re.I)
 
 def extract_slots(text):
     text = fix_ocr_digits(text)
@@ -161,6 +179,9 @@ def contains_header_fragment(text):
 def is_faculty_candidate(text):
     # ── Reject header cell OCR noise ──────────────────────────────────────
     if contains_header_fragment(text):
+        return False
+    # ── Reject VTOP auto-generated placeholder faculty names ──────────────
+    if FAKE_FACULTY_RE.search(text):
         return False
 
     t = re.sub(r'^(Prof|Dr|Ms|Mr|Mrs)\.?\s*', '', text.rstrip("-").strip(), flags=re.I)
@@ -195,8 +216,21 @@ def is_faculty_candidate(text):
     return True
 
 def clean_course_name(raw, code):
+    # Normalize OCR misreads in raw text before splitting (e.g. ST53007 -> STS3007)
+    raw_norm = re.sub(r'\b([A-Z]{2,3})5(\d{4})\b', r'\1S\2', raw)
+    # Split on ALL course codes first, find the segment belonging to `code`
+    segments = re.split(r'\b([A-Z]{2,4}\d{4})\b', raw_norm)
+    # segments alternates: [text, code, text, code, text, ...]
+    # Find the text segment immediately after our code
     name = raw
-    name = re.sub(r'\b' + re.escape(code) + r'\b', '', name)
+    for i, seg in enumerate(segments):
+        if seg == code and i + 1 < len(segments):
+            name = segments[i + 1]
+            break
+    else:
+        # code not found as a standalone segment — fall back to stripping it
+        name = re.sub(r'\b' + re.escape(code) + r'\b', '', raw)
+        name = re.split(r'\b[A-Z]{2,4}\d{4}\b', name)[0]
     name = TYPE_RE.sub('', name)
     name = re.sub(r'\bAP\d+\b', '', name)
     name = re.sub(r'\d{2}-[A-Z][a-z]{2}-\d{4}', '', name)
@@ -207,7 +241,9 @@ def clean_course_name(raw, code):
     name = re.sub(r'^\s*-\s*', '', name)
     name = re.sub(r'\s*-\s*', ' ', name)
     name = re.sub(r"[^A-Za-z0-9 &,.']", ' ', name)
-    return re.sub(r'\s+', ' ', name).strip()
+    name = re.sub(r'\s+', ' ', name).strip()
+    name = STRAY_BRACKET_RE.sub('', name).strip()
+    return name
 
 def infer_type(declared, slots):
     if not slots:
@@ -243,6 +279,15 @@ def filter_slots_for_type(slots, declared):
 # ── Column auto-detection ──────────────────────────────────────────────────────
 
 def auto_detect_columns(ocr_lines, image_width):
+    """
+    Detect column boundaries from OCR lines.
+    VTOP course table layout (approximate % of image width):
+      Course:     0% - 45%
+      Slot/Venue: 45% - 65%
+      Faculty:    65% - 85%
+    We anchor these using actual slot token positions if available,
+    otherwise fall back to fixed percentages.
+    """
     all_items = []
     for line in ocr_lines:
         bbox = line[0]
@@ -257,44 +302,68 @@ def auto_detect_columns(ocr_lines, image_width):
             footer_y = min(footer_y, y)
     items = [(t, x, y, xp) for t, x, y, xp in all_items if y < footer_y]
 
-    # Anchor: combined slot tokens e.g. "A2+TA2 -"
-    slot_xs, course_xs = [], []
+    # Find slot token x-positions (e.g. "A2+TA2", "L4+L5", "B2+TB2")
+    slot_xs = []
     for text, x, y, xp in items:
         t = text.strip()
-        if re.search(r'[A-Z]{1,2}\d{1,2}[A-Z]?\s*\+\s*[A-Z]{1,2}\d', t):
+        if re.search(r'[A-Z]{1,2}\d{1,2}[A-Z]?\s*[+\-]\s*[A-Z]{1,2}\d', t):
             slot_xs.append(xp)
-        if COURSE_CODE_RE.match(t):
-            course_xs.append(xp)
+        elif re.match(r'^[A-Z]{1,2}\d{1,2}[A-Z]?$', t) and is_valid_slot(t):
+            slot_xs.append(xp)
 
-    if not slot_xs:
-        for text, x, y, xp in items:
-            t = text.strip()
-            if re.match(r'^[A-Z]{1,2}\d{1,2}[A-Z]?$', t) and is_valid_slot(t):
-                slot_xs.append(xp)
-
-    if not slot_xs:
-        return None
+    # Find course code x-positions
+    course_xs = [xp for text, x, y, xp in items if COURSE_CODE_RE.match(text.strip())]
 
     def median(xs):
+        if not xs:
+            return None
         s = sorted(xs)
         m = len(s) // 2
         return (s[m-1] + s[m]) / 2 if len(s) % 2 == 0 else s[m]
 
     sv_center  = median(slot_xs)
-    crs_center = median(course_xs) if course_xs else sv_center * 0.4
+    crs_center = median(course_xs)
 
+    if sv_center is None:
+        print("    [auto-detect] WARNING: no slot tokens found, using fixed boundaries")
+        boundaries = {
+            "course":     (0.0,  45.0),
+            "slot_venue": (45.0, 65.0),
+            "faculty":    (65.0, 85.0),
+        }
+        for col, _ in HEADER_KEYWORDS:
+            if col not in boundaries:
+                boundaries[col] = (0.0, 0.0)
+        return boundaries
+
+    if crs_center is None:
+        crs_center = sv_center * 0.4
+
+    # Faculty column: look for faculty names to the RIGHT of slot column
+    # but NOT venue codes (which look like "101-CB", "G17-CB")
     faculty_xs = [
         xp for text, x, y, xp in items
-        if sv_center + 3 < xp < sv_center + 18
+        if xp > sv_center + 2
         and is_faculty_candidate(text.strip())
+        and not VENUE_RE.search(text.strip())
         and not TOKEN_NOISE_RE.match(text.strip())
-        and not looks_like_building_code(text.strip())
     ]
-    fac_center = median(faculty_xs) if len(faculty_xs) >= 2 else sv_center + 8
+    fac_center = median(faculty_xs) if len(faculty_xs) >= 2 else sv_center + 12
+
+    # Ensure faculty is always to the right of slot_venue
+    if fac_center <= sv_center:
+        fac_center = sv_center + 12
 
     course_right = (crs_center + sv_center) / 2
     sv_right     = (sv_center + fac_center) / 2
     fac_right    = min(fac_center + 15.0, 100.0)
+
+    # Sanity check: slot_venue must be between course and faculty
+    if not (course_right < sv_center < fac_center):
+        print(f"    [auto-detect] WARNING: bad column order crs={crs_center:.1f} sv={sv_center:.1f} fac={fac_center:.1f}, using fixed")
+        course_right = (crs_center + sv_center) / 2
+        sv_right     = sv_center + 8
+        fac_right    = min(sv_right + 20, 100.0)
 
     boundaries = {
         "course":     (0.0,          course_right),
@@ -306,6 +375,7 @@ def auto_detect_columns(ocr_lines, image_width):
             boundaries[col] = (0.0, 0.0)
 
     print(f"    [auto-detect] course={crs_center:.1f}%  slot_venue={sv_center:.1f}%  faculty={fac_center:.1f}%")
+    print(f"    [auto-detect] boundaries: course=(0,{course_right:.1f}%) sv=({course_right:.1f},{sv_right:.1f}%) fac=({sv_right:.1f},{fac_right:.1f}%)")
     return boundaries
 
 def assign_column(x, image_width, boundaries):
@@ -399,6 +469,11 @@ class CourseParser:
                 COURSE_CODE_RE.search(t)
                 for t in ct.get("course", [])
             )
+            # Also treat a row as anchor if it has a course code anywhere
+            # (catches cases where course code appears in slot_venue column)
+            if not is_anchor:
+                all_texts = " ".join(t for texts in ct.values() for t in texts)
+                is_anchor = bool(COURSE_CODE_RE.search(all_texts)) and bool(ct.get("course", []))
             if is_anchor:
                 if current is not None:
                     blocks.append(current)
@@ -476,34 +551,119 @@ class CourseParser:
         if declared and 'Credit' in declared:
             declared = "Project"
 
-        name = clean_course_name(course_raw, code)
+        name    = clean_course_name(course_raw, code)
+        # 🔥 Fallback: if name extraction failed, try recovering from raw text
         if not name:
-            return []
+            temp = course_raw.replace(code, "")
+            temp = TYPE_RE.sub('', temp)
+            temp = temp.strip()
 
-        sv_raw    = " ".join(block.get("slot_venue", []))
+            # pick longest meaningful phrase
+            words = [w for w in temp.split() if len(w) > 3]
+            if words:
+                name = " ".join(words[:4])  # limit to avoid garbage
+        sv_raw  = " ".join(block.get("slot_venue", []))
+        fac_raw = " ".join(block.get("faculty", []))
+
+        # ── OCR column-bleed: name may be a faculty name ──────────────────
+        def _is_person(s):
+            if not s:
+                return False
+            if re.match(r'^(Prof|Dr|Ms|Mr|Mrs)\.?\s', s, re.I):
+                return True
+            words = s.split()
+            # Single capitalised word with no digits = likely a name (e.g. "Shalini")
+            if len(words) == 1 and words[0][0].isupper() and words[0].isalpha() and len(words[0]) >= 4:
+                return True
+            if len(words) >= 2 and all(w.isupper() and w.isalpha() for w in words):
+                return True
+            if (len(words) == 2
+                    and all(w[0].isupper() and w.isalpha() for w in words)
+                    and all(len(w) <= 12 for w in words)):
+                return True
+            return False
+
+        bleed_faculty = None
+        if _is_person(name):
+            candidate = clean_course_name(fac_raw, code)
+
+            # 🔥 If faculty column actually contains course name → swap
+            if candidate and not _is_person(candidate) and len(candidate) > 4:
+                bleed_faculty = name
+                name = candidate
+            else:
+                bleed_faculty = name
+                name = ""
+
+        if not name:
+            name = code # fallback to code as name if we couldn't extract anything else
+
+        venue     = extract_venue(sv_raw) or extract_venue(fac_raw)
         all_slots = extract_slots(sv_raw)
-        venue     = extract_venue(sv_raw)
         is_nil    = bool(re.search(r'\bNILL?\b', sv_raw, re.IGNORECASE))
 
+        # ── Resolve faculty ───────────────────────────────────────────────
         faculty = ""
-        for t in block.get("faculty", []):
-            t_clean = t.rstrip("-").strip()
-            if not t_clean:
-                continue
-            if is_faculty_candidate(t_clean):
-                m_p = re.match(r'^(Prof|Dr|Ms|Mr|Mrs)\.?\s*', t_clean, re.I)
-                if m_p:
-                    prefix  = m_p.group(1).title()
-                    rest    = t_clean[m_p.end():].strip()
-                    faculty = f"{prefix}. {rest}"
-                else:
-                    faculty = t_clean
-                break
+        if bleed_faculty:
+            t = bleed_faculty.rstrip("-").strip()
+            if not FAKE_FACULTY_RE.search(t) and is_faculty_candidate(t):
+                m_p = re.match(r'^(Prof|Dr|Ms|Mr|Mrs)\.?\s*', t, re.I)
+                faculty = f"{m_p.group(1).title()}. {t[m_p.end():].strip()}" if m_p else t
+
+        # Course-name words that should never appear in a faculty name
+        _COURSE_NAME_RE = re.compile(
+            r'\b(Networks?|Systems?|Statistics|Management|Engineering|Science|'
+            r'Intelligence|Computing|Database|Programming|Architecture|Design|'
+            r'Analysis|Theory|Mathematics|Physics|Chemistry|Electronics|'
+            r'Communication|Security|Algorithm|Structure|Operating|Artificial|'
+            r'Computation|Algebra|Clinics|Internship|Thinking|Coding|Forensics)\b',
+            re.IGNORECASE
+        )
+
+        def _is_course_name(s):
+            return bool(_COURSE_NAME_RE.search(s))
+
+        if not faculty:
+            for t in block.get("faculty", []):
+                t = t.rstrip("-").strip()
+                if not t or FAKE_FACULTY_RE.search(t) or VENUE_RE.search(t):
+                    continue
+                if _is_course_name(t):
+                    continue
+                if is_faculty_candidate(t):
+                    m_p = re.match(r'^(Prof|Dr|Ms|Mr|Mrs)\.?\s*', t, re.I)
+                    faculty = f"{m_p.group(1).title()}. {t[m_p.end():].strip()}" if m_p else t
+                    break
+
+        if not faculty:
+            for t in block.get("slot_venue", []):
+                t = t.rstrip("-").strip()
+                if not t or FAKE_FACULTY_RE.search(t) or VENUE_RE.search(t) or extract_slots(t):
+                    continue
+                if _is_course_name(t):
+                    continue
+                if is_faculty_candidate(t):
+                    m_p = re.match(r'^(Prof|Dr|Ms|Mr|Mrs)\.?\s*', t, re.I)
+                    faculty = f"{m_p.group(1).title()}. {t[m_p.end():].strip()}" if m_p else t
+                    break
 
         if is_nil and not declared:
             declared = "Project"
 
-        # Split theory+lab if both present
+        # Final sanity check: if name looks like a person and faculty looks like
+        # a course name (or vice versa), swap them
+        if name and faculty:
+            name_is_person = bool(re.match(r'^(Prof|Dr|Ms|Mr|Mrs)\.?\s', name, re.I)) or \
+                             (len(name.split()) <= 3 and all(w[0].isupper() and w.isalpha() for w in name.split() if w))
+            fac_is_course = _is_course_name(faculty)
+            if name_is_person and fac_is_course:
+                name, faculty = faculty, name
+        elif name and not faculty:
+            # name might actually be a faculty name with no course name extracted
+            if _is_course_name(name) is False and is_faculty_candidate(name):
+                # name looks like a person but we have no course name — keep as-is
+                pass
+
         lab_slots    = [s for s in all_slots if s[0] == 'L']
         theory_slots = [s for s in all_slots if s[0] != 'L']
 
@@ -518,9 +678,7 @@ class CourseParser:
                         "venue": venue, "faculty": faculty}),
             ]
 
-        # ── FIX: if declared type contradicts slots, filter slots ──────────
         filtered_slots = filter_slots_for_type(all_slots, declared)
-
         final_type = infer_type(declared, filtered_slots)
         if not final_type:
             return []

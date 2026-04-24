@@ -18,6 +18,7 @@ class ReminderRequest(BaseModel):
     time: str
     subject: str
     faculty: Optional[str] = ""
+    venue: Optional[str] = ""
 
 
 class ReminderResponse(BaseModel):
@@ -30,6 +31,7 @@ class TimetableEntry(BaseModel):
     time: str
     subject: str
     faculty: str
+    venue: Optional[str] = ""
 
 
 class TimetableResponse(BaseModel):
