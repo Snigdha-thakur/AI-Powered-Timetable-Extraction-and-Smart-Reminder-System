@@ -330,7 +330,7 @@ Content-Type: application/json
 
 ```
 Step 1 → POST /auth/login    → copy token from response
-Step 2 → POST /upload        → paste token in Authorization header, copy timetable_id
+Step 2 → POST /upload-schedule        → paste token in Authorization header, copy timetable_id
 Step 3 → GET  /timetable/id  → paste timetable_id in URL
 Step 4 → POST /reminder      → paste token in Authorization header, paste timetable_id in body
 ```
@@ -339,10 +339,10 @@ Step 4 → POST /reminder      → paste token in Authorization header, paste ti
 
 ---
 
-## POST `/upload`
+## POST `/upload-schedule`
 
 ```
-POST http://127.0.0.1:8000/upload
+POST http://127.0.0.1:8000/upload-schedule
 Authorization: Bearer <token>
 Content-Type: application/json
 ```
