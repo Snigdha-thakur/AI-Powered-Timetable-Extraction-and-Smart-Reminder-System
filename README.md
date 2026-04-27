@@ -13,8 +13,6 @@ Docs: `http://127.0.0.1:8000/docs`
 
 ## Supabase SQL
 
-Run in Supabase SQL Editor before starting:
-
 ```sql
 CREATE TABLE users (
   id                  TEXT PRIMARY KEY,
@@ -45,25 +43,24 @@ CREATE TABLE reminders (
   time         TEXT,
   subject      TEXT,
   faculty      TEXT,
+  venue        TEXT,
   created_at   TIMESTAMPTZ DEFAULT NOW()
 );
 ```
 
 ---
 
-## Auth Test Order
+## Auth Flow
 
 ```
 Step 1 → POST /auth/signup/initiate/email   OR   POST /auth/signup/initiate/phone
 Step 2 → POST /auth/signup/verify
 Step 3 → POST /auth/signup/set-password
-Step 4 → POST /auth/login
+Step 4 → POST /auth/login                        → save token + refresh_token
 Step 5 → POST /auth/profile/setup
 Step 6 → GET  /auth/profile
-Step 7 → POST /auth/refresh  (optional)
+Step 7 → POST /auth/refresh                      (when token expires)
 ```
-
----
 
 ## Forgot Password Flow
 
@@ -72,6 +69,18 @@ Step 1 → POST /auth/forgot-password/initiate
 Step 2 → POST /auth/forgot-password/verify
 Step 3 → POST /auth/forgot-password/reset
 ```
+
+## Timetable Flow
+
+```
+Step 1 → POST /upload-schedule                                 → upload image, get timetable_id
+Step 2 → GET  /timetable/{timetable_id}                        → view extracted timetable
+Step 3 → GET  /timetable/{timetable_id}/calendar-view          → display on website calendar
+Step 4 → GET  /timetable/{timetable_id}/add-to-google-calendar → one-click add all to Google Calendar
+Step 5 → POST /reminder                                        → (optional) register for email alerts
+```
+
+> All timetable and reminder endpoints require `Authorization: Bearer <token>` header.
 
 ---
 
@@ -84,10 +93,9 @@ Content-Type: application/json
 
 **Body**
 ```json
-{ "email": "snigdha.22bce8076@vitapstudent.ac.in" }
+{ "email": "user@example.com" }
 ```
-
-**Response 200**
+**Response**
 ```json
 { "message": "OTP sent" }
 ```
@@ -105,8 +113,7 @@ Content-Type: application/json
 ```json
 { "phone": "9876543210" }
 ```
-
-**Response 200**
+**Response**
 ```json
 { "message": "OTP sent" }
 ```
@@ -122,13 +129,9 @@ Content-Type: application/json
 
 **Body**
 ```json
-{
-  "email_or_phone": "snigdha.22bce8076@vitapstudent.ac.in",
-  "otp": "482910"
-}
+{ "email_or_phone": "user@example.com", "otp": "482910" }
 ```
-
-**Response 200**
+**Response**
 ```json
 { "message": "OTP verified" }
 ```
@@ -144,13 +147,9 @@ Content-Type: application/json
 
 **Body**
 ```json
-{
-  "email_or_phone": "snigdha.22bce8076@vitapstudent.ac.in",
-  "password": "mypassword"
-}
+{ "email_or_phone": "user@example.com", "password": "mypassword" }
 ```
-
-**Response 200**
+**Response**
 ```json
 { "message": "Account created successfully" }
 ```
@@ -166,23 +165,15 @@ Content-Type: application/json
 
 **Body**
 ```json
-{
-  "email_or_phone": "snigdha.22bce8076@vitapstudent.ac.in",
-  "password": "NewPass@123"
-}
+{ "email_or_phone": "user@example.com", "password": "mypassword" }
 ```
-
-**Response 200**
+**Response**
 ```json
 {
   "message": "Login successful",
   "token": "<access_token>",
   "refresh_token": "<refresh_token>",
-  "user": {
-    "id": "uuid",
-    "email": "snigdha.22bce8076@vitapstudent.ac.in",
-    "phone": null
-  }
+  "user": { "id": "UI-A1B2C3", "email": "user@example.com", "phone": null }
 }
 ```
 
@@ -199,8 +190,7 @@ Content-Type: application/json
 ```json
 { "refresh_token": "<refresh_token>" }
 ```
-
-**Response 200**
+**Response**
 ```json
 { "token": "<new_access_token>" }
 ```
@@ -226,14 +216,13 @@ Content-Type: application/json
   "sem": "Fall Sem 2026-2027"
 }
 ```
-
-**Response 200**
+**Response**
 ```json
 {
   "message": "Profile updated successfully",
   "profile": {
     "id": "UI-A1B2C3",
-    "email": "snigdha.22bce8076@vitapstudent.ac.in",
+    "email": "user@example.com",
     "phone": "7070970266",
     "full_name": "Snigdha",
     "registration_number": "22BCE8076",
@@ -253,11 +242,11 @@ GET http://127.0.0.1:8000/auth/profile
 Authorization: Bearer <token>
 ```
 
-**Response 200**
+**Response**
 ```json
 {
   "id": "UI-A1B2C3",
-  "email": "snigdha.22bce8076@vitapstudent.ac.in",
+  "email": "user@example.com",
   "phone": "7070970266",
   "full_name": "Snigdha",
   "registration_number": "22BCE8076",
@@ -278,10 +267,9 @@ Content-Type: application/json
 
 **Body**
 ```json
-{ "email_or_phone": "snigdha.22bce8076@vitapstudent.ac.in" }
+{ "email_or_phone": "user@example.com" }
 ```
-
-**Response 200**
+**Response**
 ```json
 { "message": "OTP sent" }
 ```
@@ -297,10 +285,9 @@ Content-Type: application/json
 
 **Body**
 ```json
-{ "email_or_phone": "snigdha.22bce8076@vitapstudent.ac.in", "otp": "482910" }
+{ "email_or_phone": "user@example.com", "otp": "482910" }
 ```
-
-**Response 200**
+**Response**
 ```json
 { "message": "OTP verified" }
 ```
@@ -316,26 +303,12 @@ Content-Type: application/json
 
 **Body**
 ```json
-{ "email_or_phone": "snigdha.22bce8076@vitapstudent.ac.in", "password": "NewPass@123" }
+{ "email_or_phone": "user@example.com", "password": "NewPass@123" }
 ```
-
-**Response 200**
+**Response**
 ```json
 { "message": "Password reset successfully" }
 ```
-
----
-
-## Timetable Test Order
-
-```
-Step 1 → POST /auth/login    → copy token from response
-Step 2 → POST /upload-schedule        → paste token in Authorization header, copy timetable_id
-Step 3 → GET  /timetable/id  → paste timetable_id in URL
-Step 4 → POST /reminder      → paste token in Authorization header, paste timetable_id in body
-```
-
-> All timetable and reminder endpoints require `Authorization: Bearer <token>` header.
 
 ---
 
@@ -344,27 +317,16 @@ Step 4 → POST /reminder      → paste token in Authorization header, paste ti
 ```
 POST http://127.0.0.1:8000/upload-schedule
 Authorization: Bearer <token>
-Content-Type: application/json
+Content-Type: multipart/form-data
 ```
 
 **Body**
-```json
-{
-  "raw_data": [
-    ["Monday", "THEORY", "DBMS",   "Dr. Shah",  "OS",   "Dr. Rao",  "-", "-", "CN",   "Dr. Mehta"],
-    ["Monday", "LAB",    "DBMS-L", "Dr. Shah",  "-",    "-",        "-", "-", "OS-L", "Dr. Rao"  ],
-    ["Tuesday","THEORY", "TEE1",   "Dr. Kumar", "TEE2", "Dr. Nair", "-", "-", "FLAT", "Dr. Joshi"]
-  ]
-}
 ```
-
-**Response 200**
+schedule_image: <image file>
+```
+**Response**
 ```json
-{
-  "message": "Timetable stored",
-  "timetable_id": "TT-A1B2C3",
-  "user_id": "UI-A1B2C3"
-}
+{ "message": "Timetable stored", "timetable_id": "TT-OJQW40" }
 ```
 
 ---
@@ -372,26 +334,83 @@ Content-Type: application/json
 ## GET `/timetable/{timetable_id}`
 
 ```
-GET http://127.0.0.1:8000/timetable/TT-A1B2C3
+GET http://127.0.0.1:8000/timetable/TT-OJQW40
 ```
 
-**Response 200**
+**Response**
 ```json
 {
-  "Monday": [
-    { "type": "THEORY", "time": "08:00-08:50", "subject": "DBMS",   "faculty": "Dr. Shah"  },
-    { "type": "THEORY", "time": "09:00-09:50", "subject": "OS",     "faculty": "Dr. Rao"   },
-    { "type": "THEORY", "time": "11:00-11:50", "subject": "CN",     "faculty": "Dr. Mehta" },
-    { "type": "LAB",    "time": "08:00-08:50", "subject": "DBMS-L", "faculty": "Dr. Shah"  },
-    { "type": "LAB",    "time": "11:00-11:50", "subject": "OS-L",   "faculty": "Dr. Rao"   }
+  "Friday": [
+    { "type": "THEORY", "time": "09:00-09:50", "course_code": "MAT2003", "venue": "228-C8", "slot": "A1" },
+    { "type": "THEORY", "time": "14:00-14:50", "course_code": "CSE3008", "venue": "324-C8", "slot": "C1" }
   ],
   "Tuesday": [
-    { "type": "THEORY", "time": "08:00-08:50", "subject": "TEE1", "faculty": "Dr. Kumar" },
-    { "type": "THEORY", "time": "09:00-09:50", "subject": "TEE2", "faculty": "Dr. Nair"  },
-    { "type": "THEORY", "time": "11:00-11:50", "subject": "FLAT", "faculty": "Dr. Joshi" }
+    { "type": "THEORY", "time": "09:00-09:50", "course_code": "MAT2005", "venue": "230-C8", "slot": "B1" }
   ]
 }
 ```
+
+---
+
+## GET `/timetable/{timetable_id}/calendar-view`
+
+Returns all classes as a flat sorted list for displaying on a website calendar.
+
+```
+GET http://127.0.0.1:8000/timetable/TT-OJQW40/calendar-view
+```
+
+**Response**
+```json
+{
+  "timetable_id": "TT-OJQW40",
+  "events": [
+    {
+      "day":         "Monday",
+      "day_index":   0,
+      "time":        "09:00-09:50",
+      "time_start":  "09:00",
+      "time_end":    "09:50",
+      "course_code": "MAT2003",
+      "type":        "THEORY",
+      "slot":        "A1",
+      "venue":       "228-C8"
+    },
+    {
+      "day":         "Friday",
+      "day_index":   4,
+      "time":        "14:00-14:50",
+      "time_start":  "14:00",
+      "time_end":    "14:50",
+      "course_code": "CSE3008",
+      "type":        "THEORY",
+      "slot":        "C1",
+      "venue":       "324-C8"
+    }
+  ]
+}
+```
+
+> Events sorted by day (Monday→Sunday) then by time. Use `day_index` for calendar columns, `time_start`/`time_end` to position events in time slots.
+
+---
+
+## GET `/timetable/{timetable_id}/add-to-google-calendar`
+
+Redirects user to Google login. After they authorize, all timetable classes are added directly to their Google Calendar with **15-minute popup reminders**. No file download needed.
+
+```
+GET http://127.0.0.1:8000/timetable/TT-OJQW40/add-to-google-calendar
+```
+
+> Frontend just needs: `window.location.href = 'http://127.0.0.1:8000/timetable/TT-OJQW40/add-to-google-calendar'`
+> After Google login, user is redirected back to `http://localhost:3000?calendar_sync=success&events=20`
+
+---
+
+## GET `/auth/google/callback`
+
+Google calls this automatically after user logs in. Do not call this manually.
 
 ---
 
@@ -402,22 +421,20 @@ POST http://127.0.0.1:8000/reminder
 Authorization: Bearer <token>
 Content-Type: application/json
 ```
-
 **Body**
 ```json
 {
-  "timetable_id": "TT-A1B2C3",
-  "day": "Monday",
+  "timetable_id": "TT-OJQW40",
+  "day": "Friday",
   "time": "09:00",
-  "subject": "DBMS",
-  "faculty": "Dr. Shah"
+  "subject": "MAT2003",
+  "faculty": "Dr. Shah",
+  "venue": "228-C8"
 }
+```
+**Response**
+```json
+{ "message": "Reminder created", "reminder_id": "RM-A1B2C3" }
 ```
 
-**Response 200**
-```json
-{
-  "message": "Reminder created",
-  "reminder_id": "RM-A1B2C3"
-}
-```
+> Email sent to the user's registered address 15 minutes before the class every week.

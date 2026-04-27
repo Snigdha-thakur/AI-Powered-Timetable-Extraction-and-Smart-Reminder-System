@@ -1,24 +1,17 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
+from fastapi.responses import Response, RedirectResponse
 import uuid
 import os
 import tempfile
-from app.models.schemas import UploadRequest, UploadResponse, ReminderRequest, ReminderResponse
-from app.services.parser import parse_timetable
+from app.models.schemas import ReminderRequest, ReminderResponse
 from app.services.supabase_client import insert_timetable, get_timetable, insert_reminder
 from app.services.ocr import OCRService
+from app.services.google_calendar import generate_ics
+from app.services.google_oauth import get_google_auth_url, add_events_to_google_calendar
 from app.utils.dependencies import get_current_user
 
 router = APIRouter()
 ocr_service = OCRService()
-
-
-@router.post("/upload", response_model=UploadResponse)
-def upload_timetable(payload: UploadRequest, user_id: str = Depends(get_current_user)):
-    parsed = parse_timetable(payload.raw_data)
-    if not parsed:
-        raise HTTPException(status_code=400, detail="No valid timetable data found in input.")
-    result = insert_timetable(user_id=user_id, raw_data=payload.raw_data, parsed_data=parsed)
-    return UploadResponse(message="Timetable stored", timetable_id=result["timetable_id"], user_id=result["user_id"])
 
 
 @router.get("/timetable/{timetable_id}")
@@ -43,6 +36,67 @@ def create_reminder(payload: ReminderRequest, user_id: str = Depends(get_current
         venue=payload.venue,
     )
     return ReminderResponse(message="Reminder created", reminder_id=reminder_id)
+
+
+@router.get("/timetable/{timetable_id}/add-to-google-calendar")
+def add_to_google_calendar(timetable_id: str):
+    """Redirects user to Google login. After login, all events are added to their calendar."""
+    record = get_timetable(timetable_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Timetable not found.")
+    auth_url = get_google_auth_url(timetable_id)
+    return RedirectResponse(auth_url)
+
+
+@router.get("/auth/google/callback")
+def google_callback(code: str, state: str):
+    """Google redirects here after login. Adds all timetable events to Google Calendar."""
+    record = get_timetable(state)  # state = timetable_id
+    if not record:
+        raise HTTPException(status_code=404, detail="Timetable not found.")
+    count = add_events_to_google_calendar(code, record["data"])
+    frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+    return RedirectResponse(f"{frontend_url}?calendar_sync=success&events={count}")
+
+
+
+def download_calendar_ics(timetable_id: str):
+    record = get_timetable(timetable_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Timetable not found.")
+    ics_content = generate_ics(record["data"])
+    return Response(
+        content=ics_content,
+        media_type="text/calendar",
+        headers={"Content-Disposition": "attachment; filename=timetable.ics"},
+    )
+
+
+@router.get("/timetable/{timetable_id}/calendar-view")
+def calendar_view(timetable_id: str):
+    """Returns timetable as a list of events for displaying on a website calendar."""
+    record = get_timetable(timetable_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Timetable not found.")
+
+    DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    events = []
+    for day, entries in record["data"].items():
+        for entry in entries:
+            events.append({
+                "day":         day,
+                "day_index":   DAY_ORDER.index(day) if day in DAY_ORDER else 99,
+                "time":        entry.get("time", ""),
+                "time_start":  entry.get("time", "").split("-")[0].strip(),
+                "time_end":    entry.get("time", "").split("-")[-1].strip(),
+                "course_code": entry.get("course_code") or entry.get("subject", ""),
+                "type":        entry.get("type", ""),
+                "slot":        entry.get("slot", ""),
+                "venue":       entry.get("venue", ""),
+            })
+
+    events.sort(key=lambda e: (e["day_index"], e["time_start"]))
+    return {"timetable_id": timetable_id, "events": events}
 
 
 @router.post("/upload-schedule")
