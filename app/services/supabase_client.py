@@ -56,3 +56,25 @@ def get_reminders() -> list[dict]:
     """Fetch all reminders."""
     result = _supabase.table("reminders").select("*").execute()
     return result.data or []
+
+
+def get_user_email_by_timetable_id(timetable_id: str) -> str | None:
+    """Fetch the owner's email for a given timetable."""
+    result = (
+        _supabase.table("timetables")
+        .select("user_id")
+        .eq("id", timetable_id)
+        .maybe_single()
+        .execute()
+    )
+    if not result or not result.data:
+        return None
+    user_id = result.data["user_id"]
+    user = (
+        _supabase.table("users")
+        .select("email")
+        .eq("id", user_id)
+        .maybe_single()
+        .execute()
+    )
+    return user.data["email"] if user and user.data else None
