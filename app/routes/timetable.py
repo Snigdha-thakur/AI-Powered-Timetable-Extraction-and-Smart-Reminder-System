@@ -51,12 +51,19 @@ def add_to_google_calendar(timetable_id: str):
 @router.get("/auth/google/callback")
 def google_callback(code: str, state: str):
     """Google redirects here after login. Adds all timetable events to Google Calendar."""
-    record = get_timetable(state)  # state = timetable_id
-    if not record:
-        raise HTTPException(status_code=404, detail="Timetable not found.")
-    count = add_events_to_google_calendar(code, record["data"])
-    frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
-    return RedirectResponse(f"{frontend_url}?calendar_sync=success&events={count}")
+    try:
+        record = get_timetable(state)  # state = timetable_id
+        if not record:
+            raise HTTPException(status_code=404, detail="Timetable not found.")
+        count = add_events_to_google_calendar(code, state, record["data"])
+        frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+        return RedirectResponse(f"{frontend_url}?calendar_sync=success&events={count}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 
