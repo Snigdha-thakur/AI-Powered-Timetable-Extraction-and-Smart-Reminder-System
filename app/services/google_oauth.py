@@ -1,4 +1,5 @@
 import os
+os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
 from datetime import datetime, timedelta
 from typing import Dict, List
 from google.oauth2.credentials import Credentials
@@ -13,6 +14,21 @@ BYDAY_MAP = {
     "Thursday": "TH", "Friday": "FR", "Saturday": "SA", "Sunday": "SU"
 }
 
+# Store code_verifier keyed by timetable_id between auth and callback
+_code_verifiers: Dict[str, str] = {}
+
+
+def _client_config():
+    return {
+        "web": {
+            "client_id":     os.environ["GOOGLE_CLIENT_ID"],
+            "client_secret": os.environ["GOOGLE_CLIENT_SECRET"],
+            "redirect_uris": [os.environ["GOOGLE_REDIRECT_URI"]],
+            "auth_uri":      "https://accounts.google.com/o/oauth2/auth",
+            "token_uri":     "https://oauth2.googleapis.com/token",
+        }
+    }
+
 
 def _next_weekday(day_name: str):
     today = datetime.today()
@@ -22,42 +38,31 @@ def _next_weekday(day_name: str):
 
 
 def get_google_auth_url(timetable_id: str) -> str:
-    flow = Flow.from_client_config(
-        {
-            "web": {
-                "client_id":     os.environ["GOOGLE_CLIENT_ID"],
-                "client_secret": os.environ["GOOGLE_CLIENT_SECRET"],
-                "redirect_uris": [os.environ["GOOGLE_REDIRECT_URI"]],
-                "auth_uri":      "https://accounts.google.com/o/oauth2/auth",
-                "token_uri":     "https://oauth2.googleapis.com/token",
-            }
-        },
-        scopes=SCOPES,
-    )
+    flow = Flow.from_client_config(_client_config(), scopes=SCOPES)
     flow.redirect_uri = os.environ["GOOGLE_REDIRECT_URI"]
     auth_url, _ = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
-        state=timetable_id,   # pass timetable_id through OAuth state
+        state=timetable_id,
     )
+    # Save code_verifier so callback can use it
+    if hasattr(flow, 'code_verifier') and flow.code_verifier:
+        _code_verifiers[timetable_id] = flow.code_verifier
+    elif hasattr(flow.oauth2session, '_code_verifier'):
+        _code_verifiers[timetable_id] = flow.oauth2session._code_verifier
     return auth_url
 
 
-def add_events_to_google_calendar(code: str, timetable_data: Dict[str, List[dict]]):
-    flow = Flow.from_client_config(
-        {
-            "web": {
-                "client_id":     os.environ["GOOGLE_CLIENT_ID"],
-                "client_secret": os.environ["GOOGLE_CLIENT_SECRET"],
-                "redirect_uris": [os.environ["GOOGLE_REDIRECT_URI"]],
-                "auth_uri":      "https://accounts.google.com/o/oauth2/auth",
-                "token_uri":     "https://oauth2.googleapis.com/token",
-            }
-        },
-        scopes=SCOPES,
-    )
+def add_events_to_google_calendar(code: str, timetable_id: str, timetable_data: Dict[str, List[dict]]):
+    flow = Flow.from_client_config(_client_config(), scopes=SCOPES)
     flow.redirect_uri = os.environ["GOOGLE_REDIRECT_URI"]
-    flow.fetch_token(code=code)
+
+    # Retrieve and pass code_verifier if PKCE was used
+    code_verifier = _code_verifiers.pop(timetable_id, None)
+    if code_verifier:
+        flow.fetch_token(code=code, code_verifier=code_verifier)
+    else:
+        flow.fetch_token(code=code)
 
     creds = flow.credentials
     service = build("calendar", "v3", credentials=creds)
