@@ -73,11 +73,11 @@ Step 3 → POST /auth/forgot-password/reset
 ## Timetable Flow
 
 ```
-Step 1 → POST /upload-schedule                                 → upload image, get timetable_id
-Step 2 → GET  /timetable/{timetable_id}                        → view extracted timetable
-Step 3 → GET  /timetable/{timetable_id}/calendar-view          → display on website calendar
-Step 4 → GET  /timetable/{timetable_id}/add-to-google-calendar → one-click add all to Google Calendar
-Step 5 → POST /reminder                                        → (optional) register for email alerts
+Step 1 → POST /upload-schedule                                                              → upload image, get timetable_id
+Step 2 → GET  /timetable/{timetable_id}                                                     → view extracted timetable
+Step 3 → GET  /timetable/{timetable_id}/calendar-view?start_date=...&end_date=...          → display on website calendar
+Step 4 → GET  /timetable/{timetable_id}/add-to-google-calendar?start_date=...&end_date=... → one-click add all to Google Calendar
+Step 5 → POST /reminder                                                                     → (optional) register for email alerts
 ```
 
 > All timetable and reminder endpoints require `Authorization: Bearer <token>` header.
@@ -354,20 +354,29 @@ GET http://127.0.0.1:8000/timetable/TT-OJQW40
 
 ## GET `/timetable/{timetable_id}/calendar-view`
 
-Returns all classes as a flat sorted list for displaying on a website calendar.
+Returns all classes as a flat sorted list for displaying on a website calendar. `start_date` and `end_date` are required — returns one event per actual date occurrence within the semester.
 
 ```
-GET http://127.0.0.1:8000/timetable/TT-OJQW40/calendar-view
+GET http://127.0.0.1:8000/timetable/TT-OJQW40/calendar-view?start_date=2026-01-01&end_date=2026-05-31
 ```
+
+**Query Params**
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `start_date` | `YYYY-MM-DD` | Yes | Semester start date |
+| `end_date` | `YYYY-MM-DD` | Yes | Semester end date |
 
 **Response**
 ```json
 {
   "timetable_id": "TT-OJQW40",
+  "start_date": "2026-01-01",
+  "end_date": "2026-05-31",
   "events": [
     {
       "day":         "Monday",
       "day_index":   0,
+      "date":        "2026-01-05",
       "time":        "09:00-09:50",
       "time_start":  "09:00",
       "time_end":    "09:50",
@@ -375,36 +384,31 @@ GET http://127.0.0.1:8000/timetable/TT-OJQW40/calendar-view
       "type":        "THEORY",
       "slot":        "A1",
       "venue":       "228-C8"
-    },
-    {
-      "day":         "Friday",
-      "day_index":   4,
-      "time":        "14:00-14:50",
-      "time_start":  "14:00",
-      "time_end":    "14:50",
-      "course_code": "CSE3008",
-      "type":        "THEORY",
-      "slot":        "C1",
-      "venue":       "324-C8"
     }
   ]
 }
 ```
 
-> Events sorted by day (Monday→Sunday) then by time. Use `day_index` for calendar columns, `time_start`/`time_end` to position events in time slots.
+> Events sorted by date then time. Each event has an actual `date` field — use this to place events on a calendar grid.
 
 ---
 
 ## GET `/timetable/{timetable_id}/add-to-google-calendar`
 
-Redirects user to Google login. After they authorize, all timetable classes are added directly to their Google Calendar with **15-minute popup reminders**. No file download needed.
+Redirects user to Google login. After they authorize, all timetable classes are added directly to their Google Calendar with **15-minute popup reminders**. `start_date` and `end_date` are required — adds one event per class occurrence within the semester.
 
 ```
-GET http://127.0.0.1:8000/timetable/TT-OJQW40/add-to-google-calendar
+GET http://127.0.0.1:8000/timetable/TT-OJQW40/add-to-google-calendar?start_date=2026-01-01&end_date=2026-05-31
 ```
 
-> Frontend just needs: `window.location.href = 'http://127.0.0.1:8000/timetable/TT-OJQW40/add-to-google-calendar'`
-> After Google login, user is redirected back to `http://localhost:3000?calendar_sync=success&events=20`
+**Query Params**
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `start_date` | `YYYY-MM-DD` | Yes | Semester start date |
+| `end_date` | `YYYY-MM-DD` | Yes | Semester end date |
+
+> Frontend: `window.location.href = 'http://127.0.0.1:8000/timetable/TT-OJQW40/add-to-google-calendar?start_date=2026-01-01&end_date=2026-05-31'`
+> After Google login, user is redirected back to `http://localhost:3000?calendar_sync=success&events=80` (80 = total events added)
 
 ---
 
