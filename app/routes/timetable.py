@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Query
 from fastapi.responses import Response, RedirectResponse
 import uuid
 import os
 import tempfile
+from datetime import date
 from app.models.schemas import ReminderRequest, ReminderResponse
 from app.services.supabase_client import insert_timetable, get_timetable, insert_reminder
 from app.services.ocr import OCRService
@@ -39,12 +40,17 @@ def create_reminder(payload: ReminderRequest, user_id: str = Depends(get_current
 
 
 @router.get("/timetable/{timetable_id}/add-to-google-calendar")
-def add_to_google_calendar(timetable_id: str):
+def add_to_google_calendar(
+    timetable_id: str,
+    start_date: date = Query(..., description="Semester start date YYYY-MM-DD"),
+    end_date: date = Query(..., description="Semester end date YYYY-MM-DD"),
+):
     """Redirects user to Google login. After login, all events are added to their calendar."""
     record = get_timetable(timetable_id)
     if not record:
         raise HTTPException(status_code=404, detail="Timetable not found.")
-    auth_url = get_google_auth_url(timetable_id)
+    state = f"{timetable_id}|{start_date}|{end_date}"
+    auth_url = get_google_auth_url(timetable_id, state)
     return RedirectResponse(auth_url)
 
 
@@ -52,10 +58,16 @@ def add_to_google_calendar(timetable_id: str):
 def google_callback(code: str, state: str):
     """Google redirects here after login. Adds all timetable events to Google Calendar."""
     try:
-        record = get_timetable(state)  # state = timetable_id
+        # Parse state: timetable_id or timetable_id|start_date|end_date
+        parts = state.split("|")
+        timetable_id = parts[0]
+        start_date = date.fromisoformat(parts[1]) if len(parts) == 3 else None
+        end_date   = date.fromisoformat(parts[2]) if len(parts) == 3 else None
+
+        record = get_timetable(timetable_id)
         if not record:
             raise HTTPException(status_code=404, detail="Timetable not found.")
-        count = add_events_to_google_calendar(code, state, record["data"])
+        count = add_events_to_google_calendar(code, timetable_id, record["data"], start_date, end_date)
         frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
         return RedirectResponse(f"{frontend_url}?calendar_sync=success&events={count}")
     except HTTPException:
@@ -66,31 +78,24 @@ def google_callback(code: str, state: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
-def download_calendar_ics(timetable_id: str):
-    record = get_timetable(timetable_id)
-    if not record:
-        raise HTTPException(status_code=404, detail="Timetable not found.")
-    ics_content = generate_ics(record["data"])
-    return Response(
-        content=ics_content,
-        media_type="text/calendar",
-        headers={"Content-Disposition": "attachment; filename=timetable.ics"},
-    )
-
-
 @router.get("/timetable/{timetable_id}/calendar-view")
-def calendar_view(timetable_id: str):
-    """Returns timetable as a list of events for displaying on a website calendar."""
+def calendar_view(
+    timetable_id: str,
+    start_date: date = Query(..., description="Semester start date YYYY-MM-DD"),
+    end_date: date = Query(..., description="Semester end date YYYY-MM-DD"),
+):
+    """Returns one event per actual date occurrence within the semester date range."""
     record = get_timetable(timetable_id)
     if not record:
         raise HTTPException(status_code=404, detail="Timetable not found.")
 
+    from app.services.google_calendar import _dates_for_weekday_in_range
     DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     events = []
+
     for day, entries in record["data"].items():
         for entry in entries:
-            events.append({
+            base = {
                 "day":         day,
                 "day_index":   DAY_ORDER.index(day) if day in DAY_ORDER else 99,
                 "time":        entry.get("time", ""),
@@ -100,10 +105,29 @@ def calendar_view(timetable_id: str):
                 "type":        entry.get("type", ""),
                 "slot":        entry.get("slot", ""),
                 "venue":       entry.get("venue", ""),
-            })
+            }
+            for d in _dates_for_weekday_in_range(day, start_date, end_date):
+                events.append({**base, "date": str(d)})
 
-    events.sort(key=lambda e: (e["day_index"], e["time_start"]))
-    return {"timetable_id": timetable_id, "events": events}
+    events.sort(key=lambda e: (e["date"], e["time_start"]))
+    return {"timetable_id": timetable_id, "start_date": str(start_date), "end_date": str(end_date), "events": events}
+
+
+@router.get("/timetable/{timetable_id}/calendar.ics")
+def download_calendar_ics(
+    timetable_id: str,
+    start_date: date = Query(None, description="Start date YYYY-MM-DD"),
+    end_date: date = Query(None, description="End date YYYY-MM-DD"),
+):
+    record = get_timetable(timetable_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Timetable not found.")
+    ics_content = generate_ics(record["data"], start_date, end_date)
+    return Response(
+        content=ics_content,
+        media_type="text/calendar",
+        headers={"Content-Disposition": "attachment; filename=timetable.ics"},
+    )
 
 
 @router.post("/upload-schedule")

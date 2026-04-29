@@ -1,6 +1,6 @@
 import os
 os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta  # noqa: F401
 from typing import Dict, List
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
@@ -8,7 +8,6 @@ from googleapiclient.discovery import build
 
 SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
 
-DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 BYDAY_MAP = {
     "Monday": "MO", "Tuesday": "TU", "Wednesday": "WE",
     "Thursday": "TH", "Friday": "FR", "Saturday": "SA", "Sunday": "SU"
@@ -30,22 +29,14 @@ def _client_config():
     }
 
 
-def _next_weekday(day_name: str):
-    today = datetime.today()
-    target = DAY_ORDER.index(day_name)
-    days_ahead = (target - today.weekday()) % 7 or 7
-    return (today + timedelta(days=days_ahead)).date()
-
-
-def get_google_auth_url(timetable_id: str) -> str:
+def get_google_auth_url(timetable_id: str, state: str = None) -> str:
     flow = Flow.from_client_config(_client_config(), scopes=SCOPES)
     flow.redirect_uri = os.environ["GOOGLE_REDIRECT_URI"]
     auth_url, _ = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
-        state=timetable_id,
+        state=state or timetable_id,
     )
-    # Save code_verifier so callback can use it
     if hasattr(flow, 'code_verifier') and flow.code_verifier:
         _code_verifiers[timetable_id] = flow.code_verifier
     elif hasattr(flow.oauth2session, '_code_verifier'):
@@ -53,11 +44,17 @@ def get_google_auth_url(timetable_id: str) -> str:
     return auth_url
 
 
-def add_events_to_google_calendar(code: str, timetable_id: str, timetable_data: Dict[str, List[dict]]):
+def add_events_to_google_calendar(
+    code: str,
+    timetable_id: str,
+    timetable_data: Dict[str, List[dict]],
+    start_date,
+    end_date,
+):
+    from app.services.google_calendar import _dates_for_weekday_in_range
     flow = Flow.from_client_config(_client_config(), scopes=SCOPES)
     flow.redirect_uri = os.environ["GOOGLE_REDIRECT_URI"]
 
-    # Retrieve and pass code_verifier if PKCE was used
     code_verifier = _code_verifiers.pop(timetable_id, None)
     if code_verifier:
         flow.fetch_token(code=code, code_verifier=code_verifier)
@@ -69,10 +66,9 @@ def add_events_to_google_calendar(code: str, timetable_id: str, timetable_data: 
 
     count = 0
     for day, entries in timetable_data.items():
-        byday = BYDAY_MAP.get(day)
-        if not byday:
+        if day not in BYDAY_MAP:
             continue
-        event_date = _next_weekday(day)
+        event_dates = _dates_for_weekday_in_range(day, start_date, end_date)
 
         for entry in entries:
             time_start = entry.get("time", "").split("-")[0].strip()
@@ -87,24 +83,23 @@ def add_events_to_google_calendar(code: str, timetable_id: str, timetable_data: 
             faculty = entry.get("faculty", "")
             venue   = entry.get("venue", "")
 
-            start_dt = datetime(event_date.year, event_date.month, event_date.day, hour, minute)
-            end_dt   = start_dt + timedelta(minutes=50)
-
-            event = {
-                "summary": subject,
-                "description": "\n".join(filter(None, [
-                    f"Faculty: {faculty}" if faculty else "",
-                    f"Venue: {venue}"     if venue   else "",
-                ])),
-                "start": {"dateTime": start_dt.isoformat(), "timeZone": "Asia/Kolkata"},
-                "end":   {"dateTime": end_dt.isoformat(),   "timeZone": "Asia/Kolkata"},
-                "recurrence": [f"RRULE:FREQ=WEEKLY;BYDAY={byday}"],
-                "reminders": {
-                    "useDefault": False,
-                    "overrides": [{"method": "popup", "minutes": 15}],
-                },
-            }
-            service.events().insert(calendarId="primary", body=event).execute()
-            count += 1
+            for event_date in event_dates:
+                start_dt = datetime(event_date.year, event_date.month, event_date.day, hour, minute)
+                end_dt   = start_dt + timedelta(minutes=50)
+                event = {
+                    "summary": subject,
+                    "description": "\n".join(filter(None, [
+                        f"Faculty: {faculty}" if faculty else "",
+                        f"Venue: {venue}"     if venue   else "",
+                    ])),
+                    "start": {"dateTime": start_dt.isoformat(), "timeZone": "Asia/Kolkata"},
+                    "end":   {"dateTime": end_dt.isoformat(),   "timeZone": "Asia/Kolkata"},
+                    "reminders": {
+                        "useDefault": False,
+                        "overrides": [{"method": "popup", "minutes": 15}],
+                    },
+                }
+                service.events().insert(calendarId="primary", body=event).execute()
+                count += 1
 
     return count
