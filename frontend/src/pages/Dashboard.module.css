@@ -1,0 +1,10 @@
+.layout { min-height: 100vh; background: var(--cream-light); }
+
+.main {
+  margin-top: var(--topbar-height);
+  margin-left: var(--sidebar-width);
+  padding: 32px;
+  min-height: calc(100vh - var(--topbar-height));
+  background: var(--cream-light);
+  color: var(--text-dark);
+}

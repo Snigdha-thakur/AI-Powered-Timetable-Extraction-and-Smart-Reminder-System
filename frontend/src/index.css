@@ -1,0 +1,116 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* ── Brand Palette ── */
+  --cream:        #F3E2D4;   /* warm cream — page backgrounds, cards */
+  --mauve:        #C5B0CD;   /* soft mauve — accents, badges, highlights */
+  --slate:        #415E72;   /* slate blue — sidebar, nav, mid-dark surfaces */
+  --deep:         #17313E;   /* deep teal — darkest surfaces, topbar */
+
+  /* ── Derived / utility ── */
+  --cream-dark:   #e8cdb8;   /* slightly darker cream for borders */
+  --cream-light:  #faf4ef;   /* lightest cream for page bg */
+  --mauve-light:  #ede4f2;   /* very light mauve for hover tints */
+  --mauve-dark:   #a890b8;   /* darker mauve for active states */
+  --slate-light:  #5a7a90;   /* lighter slate for hover */
+  --white:        #ffffff;
+  --text-dark:    #17313E;   /* deep teal as primary text */
+  --text-mid:     #415E72;   /* slate as secondary text */
+  --text-muted:   #8a9aaa;   /* muted for placeholders */
+  --border:       #ddd0c8;   /* warm border */
+
+  /* ── Layout ── */
+  --sidebar-width: 240px;
+  --topbar-height: 64px;
+
+  /* ── Theme colors (can be overridden in dark mode) ── */
+  --bg-primary: #faf4ef;
+  --bg-secondary: #F3E2D4;
+  --text-primary: #17313E;
+  --text-secondary: #415E72;
+  --card-bg: #F3E2D4;
+  --border-color: #ddd0c8;
+}
+
+/* ── Animations ── */
+@keyframes slideIn {
+  from {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+html[data-theme="dark"] {
+  --cream:        #2a2a2a;
+  --cream-light:  #1a1a1a;
+  --cream-dark:   #3a3a3a;
+  --mauve:        #b89ec8;
+  --mauve-light:  #2e2040;
+  --deep:         #0d0d0d;
+  --slate:        #1e3040;
+  --text-dark:    #f0f0f0;
+  --text-mid:     #a0b0bc;
+  --text-muted:   #606870;
+  --border:       #3a3a3a;
+  --white:        #1e1e1e;
+}
+
+body {
+  font-family: 'Inter', 'Segoe UI', Roboto, sans-serif;
+  background: var(--cream-light);
+  color: var(--text-dark);
+  transition: background 0.3s, color 0.3s;
+}
+
+button { cursor: pointer; border: none; font-family: inherit; }
+input { font-family: inherit; }
+a { text-decoration: none; color: inherit; }
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--cream-light);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
