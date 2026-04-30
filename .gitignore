@@ -4,3 +4,5 @@ __pycache__/
 .env
 credentials.json
 token.json
+node_modules/
+frontend/node_modules/
