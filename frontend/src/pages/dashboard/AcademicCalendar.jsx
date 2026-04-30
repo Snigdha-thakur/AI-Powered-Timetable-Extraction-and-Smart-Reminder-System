@@ -29,9 +29,20 @@ export default function AcademicCalendar() {
     } finally { setLoading(false) }
   }
 
-  const handleSync = () => {
+  const handleSync = async () => {
+    if (!inputId || !startDate || !endDate || !timetable) {
+      toast.error('✕ Missing required fields')
+      return
+    }
     setSyncing(true)
-    window.location.href = `http://127.0.0.1:8000/timetable/${inputId}/add-to-google-calendar?start_date=${startDate}&end_date=${endDate}`
+    try {
+      const url = `http://127.0.0.1:8000/timetable/${inputId}/add-to-google-calendar?start_date=${startDate}&end_date=${endDate}`
+      toast.success('🔄 Redirecting to Google Calendar...')
+      window.location.href = url
+    } catch (err) {
+      toast.error(`✕ ${err.message}`)
+      setSyncing(false)
+    }
   }
 
   const eventsByDate = useMemo(() => {
@@ -79,7 +90,7 @@ export default function AcademicCalendar() {
             <button className={styles.outlineBtn}
               style={{flex: 1, minWidth: '160px', padding: '10px 16px'}}
               onClick={handleSync}
-              disabled={!timetable || syncing}>
+              disabled={!timetable || !inputId || syncing}>
               {syncing ? '🔄 Syncing…' : '🔗 Google Calendar'}
             </button>
           </div>
