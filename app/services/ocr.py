@@ -243,7 +243,7 @@ def _is_valid_course_code(code: str) -> bool:
 
 class OCRService:
     def __init__(self):
-        self.ocr = PaddleOCR(use_angle_cls=True, lang='en', show_log=False)
+        self.ocr = PaddleOCR(use_angle_cls=False, lang='en', show_log=False)
 
     def clean_text(self, text: str) -> str:
         return re.sub(r'\s+', ' ', text).strip()
@@ -262,13 +262,7 @@ class OCRService:
     def extract_from_schedule_image(self, image_path: str) -> List[dict]:
         print('[Schedule] Extracting enriched cells only...')
         img = preprocess_for_ocr(image_path)
-        crop_y = self._find_grid_top(img)
-        img_crop = img[crop_y:, :] if crop_y > 0 else img
-
-        cells = detect_table_cells(img_crop)
-        if not cells:
-            cells = detect_table_cells(img)
-            img_crop = img
+        cells = detect_table_cells(img)
         if not cells:
             print('[Schedule] No grid detected')
             return []
@@ -282,13 +276,13 @@ class OCRService:
             pad_x = max(1, int(w * 0.04))
             pad_y = max(1, int(h * 0.06))
             y1 = max(0, y + pad_y)
-            y2 = min(img_crop.shape[0], y + h - pad_y)
+            y2 = min(img.shape[0], y + h - pad_y)
             x1 = max(0, x + pad_x)
-            x2 = min(img_crop.shape[1], x + w - pad_x)
+            x2 = min(img.shape[1], x + w - pad_x)
             if y2 <= y1 or x2 <= x1:
                 continue
 
-            cell_proc = self._preprocess_cell_for_ocr(img_crop[y1:y2, x1:x2])
+            cell_proc = self._preprocess_cell_for_ocr(img[y1:y2, x1:x2])
             ocr_result = self.ocr.ocr(cell_proc, cls=False)
             if ocr_result and ocr_result[0]:
                 text = ' '.join(self.clean_text(r[1][0]) for r in ocr_result[0]).strip()

@@ -11,6 +11,7 @@ export default function AcademicCalendar() {
   const [events, setEvents]       = useState([])
   const [loading, setLoading]     = useState(false)
   const [syncing, setSyncing]     = useState(false)
+  const [removing, setRemoving]   = useState(false)
   const toast = useToast()
 
   const fetchCalendarView = async (id, sd, ed) => {
@@ -42,6 +43,20 @@ export default function AcademicCalendar() {
     } catch (err) {
       toast.error(`✕ ${err.message}`)
       setSyncing(false)
+    }
+  }
+
+  const handleRemove = async () => {
+    if (!inputId) { toast.error('✕ No timetable loaded'); return }
+    if (!startDate || !endDate) { toast.error('✕ Set semester dates first'); return }
+    setRemoving(true)
+    try {
+      const { auth_url } = await api.delete(`/timetable/${inputId}/remove-from-google-calendar?start_date=${startDate}&end_date=${endDate}`)
+      toast.success('🔄 Redirecting to Google...')
+      window.location.href = auth_url
+    } catch (err) {
+      toast.error(`✕ ${err.message}`)
+      setRemoving(false)
     }
   }
 
@@ -91,7 +106,13 @@ export default function AcademicCalendar() {
               style={{flex: 1, minWidth: '160px', padding: '10px 16px'}}
               onClick={handleSync}
               disabled={!timetable || !inputId || syncing}>
-              {syncing ? '🔄 Syncing…' : '🔗 Google Calendar'}
+              {syncing ? '🔄 Syncing…' : '🔗 Add to Google Calendar'}
+            </button>
+            <button className={styles.dangerBtn}
+              style={{flex: 1, minWidth: '160px', padding: '10px 16px'}}
+              onClick={handleRemove}
+              disabled={!inputId || removing}>
+              {removing ? '🔄 Removing…' : '🗑️ Remove from Google Calendar'}
             </button>
           </div>
         </div>

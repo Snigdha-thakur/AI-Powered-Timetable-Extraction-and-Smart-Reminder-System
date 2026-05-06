@@ -45,7 +45,7 @@ export default function AuthPage() {
 
   // ── Sign Up step 1: initiate ─────────────────────────────────
   const handleSignupInit = (e) => { e.preventDefault(); wrap(async () => {
-    await api.post('/auth/signup/initiate/email', { email })
+    await api.post('/auth/signup/initiate/email', { email, role })
     setInfo(`OTP sent to ${email}`)
     go('signup_otp')
   })}
@@ -66,7 +66,7 @@ export default function AuthPage() {
 
   // ── Forgot step 1: initiate ──────────────────────────────────
   const handleForgotInit = (e) => { e.preventDefault(); wrap(async () => {
-    await api.post('/auth/forgot-password/initiate', { email_or_phone: email })
+    await api.post('/auth/forgot-password/initiate', { email_or_phone: email, role })
     setInfo(`OTP sent to ${email}`)
     go('forgot_otp')
   })}
@@ -87,8 +87,8 @@ export default function AuthPage() {
 
   // ── Resend OTP ───────────────────────────────────────────────
   const resendOtp = () => wrap(async () => {
-    if (step === 'signup_otp') await api.post('/auth/signup/initiate/email', { email })
-    else await api.post('/auth/forgot-password/initiate', { email_or_phone: email })
+    if (step === 'signup_otp') await api.post('/auth/signup/initiate/email', { email, role })
+    else await api.post('/auth/forgot-password/initiate', { email_or_phone: email, role })
     setInfo('OTP resent!')
   })
 
@@ -276,7 +276,7 @@ export default function AuthPage() {
                 <label>Email</label>
                 <div className={styles.inputWrap}>
                   <span className={styles.inputIcon}>✉️</span>
-                  <input type="email" placeholder="you@university.edu" value={email}
+                  <input type="email" placeholder={role === 'faculty' ? 'name@vitap.ac.in' : 'you@vitapstudent.ac.in'} value={email}
                     onChange={e => setEmail(e.target.value)} required />
                 </div>
               </div>
