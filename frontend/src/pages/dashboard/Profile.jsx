@@ -29,7 +29,7 @@ export default function Profile() {
       })
       .catch(e => toast.error(`✕ Failed to load profile: ${e.message}`))
       .finally(() => setFetching(false))
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   const save = async (e) => {
     e.preventDefault(); setLoading(true)
