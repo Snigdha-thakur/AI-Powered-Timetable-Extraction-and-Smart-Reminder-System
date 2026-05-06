@@ -77,6 +77,7 @@ Step 1 → POST /upload-schedule                                                
 Step 2 → GET  /timetable/{timetable_id}                                                     → view extracted timetable
 Step 3 → GET  /timetable/{timetable_id}/calendar-view?start_date=...&end_date=...          → display on website calendar
 Step 4 → GET  /timetable/{timetable_id}/add-to-google-calendar?start_date=...&end_date=... → one-click add all to Google Calendar
+Step 4b→ DELETE /timetable/{timetable_id}/remove-from-google-calendar                      → remove all timetable events from Google Calendar
 Step 5 → POST /reminder                                                                     → (optional) register for email alerts
 ```
 
@@ -409,6 +410,27 @@ GET http://127.0.0.1:8000/timetable/TT-OJQW40/add-to-google-calendar?start_date=
 
 > Frontend: `window.location.href = 'http://127.0.0.1:8000/timetable/TT-OJQW40/add-to-google-calendar?start_date=2026-01-01&end_date=2026-05-31'`
 > After Google login, user is redirected back to `http://localhost:3000?calendar_sync=success&events=80` (80 = total events added)
+
+---
+
+## DELETE `/timetable/{timetable_id}/remove-from-google-calendar`
+
+Returns a Google OAuth URL. Redirect the user to it — after they authorize, all timetable events (tagged with this `timetable_id`) are deleted from their Google Calendar.
+
+```
+DELETE http://127.0.0.1:8000/timetable/TT-OJQW40/remove-from-google-calendar
+Authorization: Bearer <token>
+```
+
+**Response**
+```json
+{ "auth_url": "https://accounts.google.com/o/oauth2/auth?..." }
+```
+
+> Frontend: `window.location.href = response.auth_url`
+> After Google login, user is redirected back to `http://localhost:3000?calendar_sync=deleted&events=80` (80 = total events deleted)
+
+> Note: Only events added **after** this feature was deployed will be deleted (events must have been tagged with `timetable_id` at insert time).
 
 ---
 

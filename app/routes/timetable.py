@@ -5,14 +5,22 @@ import os
 import tempfile
 from datetime import date
 from app.models.schemas import ReminderRequest, ReminderResponse
-from app.services.supabase_client import insert_timetable, get_timetable, insert_reminder
+from app.services.supabase_client import insert_timetable, get_timetable, insert_reminder, get_latest_timetable_by_user
 from app.services.ocr import OCRService
 from app.services.google_calendar import generate_ics
-from app.services.google_oauth import get_google_auth_url, add_events_to_google_calendar
+from app.services.google_oauth import get_google_auth_url, add_events_to_google_calendar, delete_timetable_events_from_google_calendar, _pending_actions
 from app.utils.dependencies import get_current_user
 
 router = APIRouter()
 ocr_service = OCRService()
+
+
+@router.get("/timetable/my")
+def fetch_my_timetable(user_id: str = Depends(get_current_user)):
+    record = get_latest_timetable_by_user(user_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="No timetable found.")
+    return {"timetable_id": record["id"], "data": record["data"]}
 
 
 @router.get("/timetable/{timetable_id}")
@@ -45,30 +53,51 @@ def add_to_google_calendar(
     start_date: date = Query(..., description="Semester start date YYYY-MM-DD"),
     end_date: date = Query(..., description="Semester end date YYYY-MM-DD"),
 ):
-    """Redirects user to Google login. After login, all events are added to their calendar."""
     record = get_timetable(timetable_id)
     if not record:
         raise HTTPException(status_code=404, detail="Timetable not found.")
     state = f"{timetable_id}|{start_date}|{end_date}"
-    auth_url = get_google_auth_url(timetable_id, state)
+    auth_url = get_google_auth_url(timetable_id, state, action="add")
     return RedirectResponse(auth_url)
+
+
+@router.delete("/timetable/{timetable_id}/remove-from-google-calendar")
+def remove_from_google_calendar(
+    timetable_id: str,
+    start_date: date = Query(..., description="Semester start date YYYY-MM-DD"),
+    end_date: date = Query(..., description="Semester end date YYYY-MM-DD"),
+    _: str = Depends(get_current_user),
+):
+    state = f"{timetable_id}|{start_date}|{end_date}|delete"
+    auth_url = get_google_auth_url(timetable_id, state, action="delete")
+    return {"auth_url": auth_url}
 
 
 @router.get("/auth/google/callback")
 def google_callback(code: str, state: str):
-    """Google redirects here after login. Adds all timetable events to Google Calendar."""
+    """Google redirects here after login. Adds or deletes timetable events in Google Calendar."""
     try:
-        # Parse state: timetable_id or timetable_id|start_date|end_date
         parts = state.split("|")
         timetable_id = parts[0]
-        start_date = date.fromisoformat(parts[1]) if len(parts) == 3 else None
-        end_date   = date.fromisoformat(parts[2]) if len(parts) == 3 else None
+        frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 
+        # delete state: "TT-XXX|start_date|end_date|delete"
+        if len(parts) == 4 and parts[3] == "delete":
+            start_date = date.fromisoformat(parts[1])
+            end_date   = date.fromisoformat(parts[2])
+            record = get_timetable(timetable_id)
+            if not record:
+                raise HTTPException(status_code=404, detail="Timetable not found.")
+            count = delete_timetable_events_from_google_calendar(code, timetable_id, start_date, end_date)
+            return RedirectResponse(f"{frontend_url}?calendar_sync=deleted&events={count}")
+
+        # add state: "TT-XXX|start_date|end_date"
+        start_date = date.fromisoformat(parts[1]) if len(parts) >= 3 else None
+        end_date   = date.fromisoformat(parts[2]) if len(parts) >= 3 else None
         record = get_timetable(timetable_id)
         if not record:
             raise HTTPException(status_code=404, detail="Timetable not found.")
         count = add_events_to_google_calendar(code, timetable_id, record["data"], start_date, end_date)
-        frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
         return RedirectResponse(f"{frontend_url}?calendar_sync=success&events={count}")
     except HTTPException:
         raise

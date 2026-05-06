@@ -124,7 +124,8 @@
   cursor: pointer;
   transition: background 0.2s;
 }
-.dangerBtn:hover { background: rgba(192,57,43,0.15); }
+.dangerBtn:hover:not(:disabled) { background: rgba(192,57,43,0.15); }
+.dangerBtn:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .success {
   background: rgba(65,94,114,0.1);

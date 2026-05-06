@@ -26,6 +26,20 @@ def insert_timetable(user_id: str, raw_data: list, parsed_data: dict) -> dict:
     return {"timetable_id": timetable_id, "user_id": user_id}
 
 
+def get_latest_timetable_by_user(user_id: str) -> dict | None:
+    """Fetch the most recent timetable for a user."""
+    result = (
+        _supabase.table("timetables")
+        .select("*")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .maybe_single()
+        .execute()
+    )
+    return result.data if result else None
+
+
 def get_timetable(timetable_id: str) -> dict | None:
     """Fetch a timetable by ID. Returns None if not found."""
     result = (

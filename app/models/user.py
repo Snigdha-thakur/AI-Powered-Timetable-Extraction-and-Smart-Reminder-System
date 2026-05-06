@@ -20,19 +20,26 @@ def get_user(email_or_phone: str):
 
 
 def get_user_by_id(user_id: str):
-    res = db.table(TABLE).select("id,email,phone,full_name,registration_number,department,degree,sem").eq("id", user_id).execute()
+    res = db.table(TABLE).select("id,email,phone,full_name,registration_number,employee_id,department,degree,sem").eq("id", user_id).execute()
     return res.data[0] if res.data else None
 
 
-def update_profile(user_id: str, full_name: str, registration_number: str, phone: str, department: str, degree: str, batch: str):
-    res = db.table(TABLE).update({
+def update_profile(user_id: str, full_name: str, registration_number: str, employee_id: str, phone: str, department: str, degree: str, batch: str):
+    payload = {
         "full_name": full_name,
-        "registration_number": registration_number,
-        "phone": phone,
         "department": department,
-        "degree": degree,
         "sem": batch,
-    }).eq("id", user_id).execute()
+    }
+    if phone:
+        payload["phone"] = phone
+    if registration_number:
+        payload["registration_number"] = registration_number.upper()
+    if employee_id:
+        payload["employee_id"] = employee_id
+    if degree:
+        payload["degree"] = degree
+
+    res = db.table(TABLE).update(payload).eq("id", user_id).execute()
     data = res.data[0] if res.data else None
     if data:
         data.pop("password", None)

@@ -15,7 +15,7 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 @router.post("/signup/initiate/email")
 def signup_initiate_email(body: EmailInitiateRequest):
     try:
-        auth_service.initiate_email_signup(body.email)
+        auth_service.initiate_email_signup(body.email, body.role)
         return {"message": "OTP sent"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -77,16 +77,15 @@ def setup_profile(body: ProfileRequest, user_id: str = Depends(get_current_user)
             user_id=user_id,
             full_name=body.full_name,
             registration_number=body.registration_number,
+            employee_id=body.employee_id,
             phone=body.phone,
             department=body.department,
             degree=body.degree,
             batch=body.sem,
         )
         return {"message": "Profile updated successfully", "profile": profile}
-    except ValueError as e:
+    except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to update profile. Please try again.")
 
 
 @router.get("/profile")
@@ -100,7 +99,7 @@ def get_profile(user_id: str = Depends(get_current_user)):
 @router.post("/forgot-password/initiate")
 def forgot_password_initiate(body: ForgotPasswordInitiateRequest):
     try:
-        auth_service.forgot_password_initiate(body.email_or_phone)
+        auth_service.forgot_password_initiate(body.email_or_phone, body.role)
         return {"message": "OTP sent"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -8,32 +8,35 @@ const DAY_ORDER = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'
 export default function MyClasses() {
   const [timetable, setTimetable]   = useState(null)
   const [activeDay, setActiveDay]   = useState(null)
-  const [inputId, setInputId]       = useState(localStorage.getItem('timetable_id') || '')
   const [loading, setLoading]       = useState(false)
   const [reminder, setReminder]     = useState(null)
   const [remLoading, setRemLoading] = useState(false)
   const toast = useToast()
 
-  const fetchTimetable = async (id) => {
-    if (!id) return
-    setLoading(true)
-    try {
-      const data = await api.get(`/timetable/${id}`)
-      setTimetable(data)
-      localStorage.setItem('timetable_id', id)
-      // Set first available day as active
-      const firstDay = DAY_ORDER.find(d => data[d]?.length > 0)
-      setActiveDay(firstDay || Object.keys(data)[0] || 'Monday')
-      toast.success('✓ Timetable loaded')
-    } catch (err) {
-      toast.error(`✕ ${err.message}`)
-    }
-    finally { setLoading(false) }
+  const loadTimetable = (data, id) => {
+    setTimetable(data)
+    localStorage.setItem('timetable_id', id)
+    const firstDay = DAY_ORDER.find(d => data[d]?.length > 0)
+    setActiveDay(firstDay || Object.keys(data)[0] || 'Monday')
   }
 
   useEffect(() => {
-    const id = localStorage.getItem('timetable_id')
-    if (id) { setInputId(id); fetchTimetable(id) }
+    setLoading(true)
+    api.get('/timetable/my')
+      .then(res => { loadTimetable(res.data, res.timetable_id); toast.success('✓ Timetable loaded') })
+      .catch(() => {
+        // fallback to cached id
+        const id = localStorage.getItem('timetable_id')
+        if (id) {
+          api.get(`/timetable/${id}`)
+            .then(data => { loadTimetable(data, id); toast.success('✓ Timetable loaded') })
+            .catch(err => toast.error(`✕ ${err.message}`))
+            .finally(() => setLoading(false))
+        } else {
+          setLoading(false)
+        }
+      })
+      .finally(() => setLoading(false))
   }, [])
 
   const createReminder = async () => {
@@ -71,17 +74,10 @@ export default function MyClasses() {
       <h2 className={styles.title}>📚 My Classes</h2>
 
       <div className={styles.card}>
-        <div className={styles.row}>
-          <input className={styles.inlineInput} value={inputId}
-            onChange={e => setInputId(e.target.value)}
-            placeholder="Timetable ID (e.g TT-A1B2C3)"
-            onKeyDown={e => e.key === 'Enter' && fetchTimetable(inputId)} />
-          <button className={styles.primaryBtn}
-            style={{ width: 'auto', padding: '10px 22px', whiteSpace: 'nowrap' }}
-            onClick={() => fetchTimetable(inputId)} disabled={loading}>
-            {loading ? <span className={styles.btnSpinner}/> : '🔍'} Load
-          </button>
-        </div>
+        {loading && <div className={styles.progressBar}><div className={styles.progressFill} style={{width: '60%'}}></div></div>}
+        {!timetable && !loading && (
+          <p className={styles.empty}>No timetable found. Upload one from <strong>Upload Timetable</strong>.</p>
+        )}
 
         {timetable && (
           <>
