@@ -4,6 +4,7 @@ import { useToast } from '../../utils/hooks'
 import styles from './Section.module.css'
 
 const DAY_ORDER = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
+const TODAY = DAY_ORDER[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1]
 
 export default function MyClasses() {
   const [timetable, setTimetable]   = useState(null)
@@ -16,8 +17,10 @@ export default function MyClasses() {
   const loadTimetable = (data, id) => {
     setTimetable(data)
     localStorage.setItem('timetable_id', id)
+    // Default to today if classes exist, else first available day
+    const todayHasClasses = data[TODAY]?.length > 0
     const firstDay = DAY_ORDER.find(d => data[d]?.length > 0)
-    setActiveDay(firstDay || Object.keys(data)[0] || 'Monday')
+    setActiveDay(todayHasClasses ? TODAY : (firstDay || Object.keys(data)[0] || 'Monday'))
   }
 
   useEffect(() => {
@@ -84,9 +87,9 @@ export default function MyClasses() {
             <div className={styles.dayTabs}>
               {availableDays.map(d => (
                 <button key={d}
-                  className={`${styles.dayTab} ${activeDay === d ? styles.activeDayTab : ''}`}
+                  className={`${styles.dayTab} ${activeDay === d ? styles.activeDayTab : ''} ${d === TODAY && activeDay !== d ? styles.todayTab : ''}`}
                   onClick={() => setActiveDay(d)}>
-                  {d.slice(0, 3)}
+                  {d.slice(0, 3)}{d === TODAY ? ' 📍' : ''}
                   <span className={styles.dayCount}>{timetable[d].length}</span>
                 </button>
               ))}

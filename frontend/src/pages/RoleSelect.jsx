@@ -27,19 +27,6 @@ const roles = [
       </svg>
     ),
   },
-  {
-    key: 'phd',
-    label: 'PHD Scholar',
-    icon: (
-      <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" width="72" height="72">
-        <path d="M8 38L40 20l32 18-32 18L8 38z" fill="#C5B0CD" />
-        <path d="M40 56v10" stroke="#415E72" strokeWidth="4" strokeLinecap="round" />
-        <path d="M28 66h24" stroke="#415E72" strokeWidth="4" strokeLinecap="round" />
-        <path d="M64 38v14" stroke="#C5B0CD" strokeWidth="3.5" strokeLinecap="round" />
-        <circle cx="64" cy="54" r="3.5" fill="#C5B0CD" />
-      </svg>
-    ),
-  },
 ]
 
 export default function RoleSelect() {
