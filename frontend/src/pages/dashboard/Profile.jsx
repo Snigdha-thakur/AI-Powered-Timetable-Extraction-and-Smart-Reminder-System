@@ -27,7 +27,7 @@ export default function Profile() {
         toast.error(`✕ Failed to load profile: ${e.message}`)
       })
       .finally(() => setFetching(false))
-  }, [toast])
+  }, [])
 
   const save = async (e) => {
     e.preventDefault(); setLoading(true)
