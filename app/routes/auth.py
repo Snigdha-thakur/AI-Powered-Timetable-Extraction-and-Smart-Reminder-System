@@ -15,7 +15,7 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 @router.post("/signup/initiate/email")
 def signup_initiate_email(body: EmailInitiateRequest):
     try:
-        auth_service.initiate_email_signup(body.email, body.role)
+        auth_service.initiate_email_signup(body.email)
         return {"message": "OTP sent"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -99,7 +99,7 @@ def get_profile(user_id: str = Depends(get_current_user)):
 @router.post("/forgot-password/initiate")
 def forgot_password_initiate(body: ForgotPasswordInitiateRequest):
     try:
-        auth_service.forgot_password_initiate(body.email_or_phone, body.role)
+        auth_service.forgot_password_initiate(body.email_or_phone)
         return {"message": "OTP sent"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

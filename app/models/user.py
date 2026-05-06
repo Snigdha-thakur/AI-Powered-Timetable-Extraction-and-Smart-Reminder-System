@@ -38,7 +38,6 @@ def update_profile(user_id: str, full_name: str, registration_number: str, emplo
         payload["employee_id"] = employee_id
     if degree:
         payload["degree"] = degree
-
     res = db.table(TABLE).update(payload).eq("id", user_id).execute()
     data = res.data[0] if res.data else None
     if data:

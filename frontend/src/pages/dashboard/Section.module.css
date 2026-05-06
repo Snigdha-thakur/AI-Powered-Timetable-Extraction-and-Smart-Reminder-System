@@ -178,6 +178,7 @@
 }
 .dayTab:hover { border-color: var(--slate); background: var(--cream); }
 .activeDayTab { background: var(--slate); color: var(--cream); border-color: var(--slate); }
+.todayTab { border-color: var(--slate); color: var(--slate); font-weight: 700; }
 
 .classList { display: flex; flex-direction: column; gap: 10px; }
 .classCard {

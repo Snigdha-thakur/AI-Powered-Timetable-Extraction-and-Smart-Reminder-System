@@ -10,7 +10,7 @@ import styles from './AuthPage.module.css'
 export default function AuthPage() {
   const navigate = useNavigate()
   const role = sessionStorage.getItem('role') || 'student'
-  const roleLabel = { student: 'Student', faculty: 'Faculty', phd: 'PHD Scholar' }[role]
+  const roleLabel = { student: 'Student', faculty: 'Faculty' }[role] || 'Student'
 
   const [step, setStep]     = useState('signin')
   const [error, setError]   = useState('')
@@ -175,7 +175,7 @@ export default function AuthPage() {
         <div className={styles.formWrap}>
           <div className={styles.formTop}>
             <div className={styles.avatarCircle}>
-              {role === 'student' ? '🎓' : role === 'faculty' ? '💼' : '🔬'}
+              {role === 'student' ? '🎓' : '💼'}
             </div>
             <div>
               <h2 className={styles.welcomeTitle}>{stepTitle}</h2>
