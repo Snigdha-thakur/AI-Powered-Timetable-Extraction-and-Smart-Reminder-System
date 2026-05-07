@@ -9,8 +9,8 @@ import styles from './AuthPage.module.css'
 
 export default function AuthPage() {
   const navigate = useNavigate()
-  const role = sessionStorage.getItem('role') || 'student'
-  const roleLabel = { student: 'Student', faculty: 'Faculty' }[role] || 'Student'
+  const role = 'student'
+  const roleLabel = 'Student'
 
   const [step, setStep]     = useState('signin')
   const [error, setError]   = useState('')
@@ -175,7 +175,7 @@ export default function AuthPage() {
         <div className={styles.formWrap}>
           <div className={styles.formTop}>
             <div className={styles.avatarCircle}>
-              {role === 'student' ? '🎓' : '💼'}
+              🎓
             </div>
             <div>
               <h2 className={styles.welcomeTitle}>{stepTitle}</h2>
@@ -276,7 +276,7 @@ export default function AuthPage() {
                 <label>Email</label>
                 <div className={styles.inputWrap}>
                   <span className={styles.inputIcon}>✉️</span>
-                  <input type="email" placeholder={role === 'faculty' ? 'name@vitap.ac.in' : 'you@vitapstudent.ac.in'} value={email}
+                  <input type="email" placeholder="you@vitapstudent.ac.in" value={email}
                     onChange={e => setEmail(e.target.value)} required />
                 </div>
               </div>
